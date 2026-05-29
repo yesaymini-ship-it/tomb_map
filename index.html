@@ -537,10 +537,10 @@
     const SUPABASE_URL = 'https://kudfufxgvnewyhahpxkn.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_ANgFMxIy_wLOIawNqmfqOQ_OgtETx0i';
     
-    let supabase;
+    let supabaseClient;
     if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
       if (window.supabase) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       } else {
         console.error("無法載入 Supabase SDK！請確認您的網路連線是否正常，或是否啟用了廣告阻擋器阻擋了 jsDelivr CDN。");
       }
@@ -649,9 +649,9 @@
 
     // 🎯 [Supabase 串接]：從雲端資料庫讀取所有墓地
     async function loadLocations() {
-      if (!supabase) return;
+      if (!supabaseClient) return;
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('locations')
           .select('*')
           .order('created_at', { ascending: false });
@@ -778,7 +778,7 @@
     // 🎯 [Supabase 串接]：上傳照片與儲存資料到雲端
     async function submitForm(event) {
       event.preventDefault();
-      if (!supabase) {
+      if (!supabaseClient) {
         alert("尚未填入您的 Supabase 設定，無法儲存！");
         return;
       }
@@ -813,14 +813,14 @@
           const fileExt = photoFile.name.split('.').pop();
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
           
-          const { data: uploadData, error: uploadError } = await supabase.storage
+          const { data: uploadData, error: uploadError } = await supabaseClient.storage
             .from('photos')
             .upload(fileName, photoFile);
 
           if (uploadError) throw uploadError;
 
           // 取得公開下載連結
-          const { data: { publicUrl } } = supabase.storage
+          const { data: { publicUrl } } = supabaseClient.storage
             .from('photos')
             .getPublicUrl(fileName);
             
@@ -828,7 +828,7 @@
         }
 
         // 2. 將文字欄位與照片網址存入 PostgreSQL 資料庫
-        const { data: insertData, error: insertError } = await supabase
+        const { data: insertData, error: insertError } = await supabaseClient
           .from('locations')
           .insert([{
             name: name.trim(),
@@ -898,7 +898,7 @@
 
     window.onload = async () => {
       initMap();
-      if (supabase) {
+      if (supabaseClient) {
         await loadLocations();
       }
     };
