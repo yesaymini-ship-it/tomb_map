@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>清明尋陵：掃墓地圖協作系統 (雲端版)</title>
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --primary-color: #1e3a27;      /* 森林深綠 */
+      --secondary-color: #4f6f52;    /* 鼠尾草綠 */
+      --accent-color: #c89f53;       /* 金黃點綴 */
+      --accent-hover: #b08a43;       /* 金黃深色 */
+      --bg-color: #f7f9f6;           /* 溫暖米白 */
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --text-main: #1f2d24;          /* 主要文字 */
+      --text-muted: #53685e;         /* 次要文字 */
+      --shadow-sm: 0 2px 8px rgba(30, 58, 39, 0.08);
+      --shadow-md: 0 4px 20px rgba(30, 58, 39, 0.12);
+      --border-radius: 16px;
+      --transition-speed: 0.3s;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      border-bottom: 2px solid var(--accent-color);
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    header h1 span.logo-emoji {
+      font-size: 1.5rem;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--accent-color);
+      font-weight: 300;
+    }
+
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      position: relative;
+      height: calc(100vh - 54px);
+    }
+
+    #map {
+      flex: 1;
+      height: 100%;
+      z-index: 1;
+    }
+
+    .sidebar {
+      width: 420px;
+      background-color: var(--bg-color);
+      box-shadow: var(--shadow-md);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid rgba(79, 111, 82, 0.15);
+    }
+
+    .tabs-container {
+      display: flex;
+      border-bottom: 1px solid rgba(79, 111, 82, 0.15);
+      background-color: white;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 16px;
+      text-align: center;
+      border: none;
+      background: none;
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      border-bottom: 3px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .tab-btn:hover {
+      color: var(--primary-color);
+    }
+
+    .tab-btn.active {
+      color: var(--primary-color);
+      font-weight: 700;
+      border-bottom-color: var(--accent-color);
+      background-color: rgba(79, 111, 82, 0.05);
+    }
+
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel {
+      display: none;
+      height: 100%;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .search-box {
+      position: relative;
+      margin-bottom: 12px;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 12px 16px 12px 40px;
+      border-radius: var(--border-radius);
+      border: 1px solid rgba(79, 111, 82, 0.25);
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px rgba(200, 159, 83, 0.15);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+    }
+
+    .tip-card {
+      background: linear-gradient(135deg, rgba(30, 58, 39, 0.03) 0%, rgba(200, 159, 83, 0.05) 100%);
+      border-left: 4px solid var(--accent-color);
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .location-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .location-card {
+      background-color: white;
+      border-radius: var(--border-radius);
+      padding: 16px;
+      border: 1px solid rgba(79, 111, 82, 0.1);
+      box-shadow: var(--shadow-sm);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      display: flex;
+      gap: 12px;
+    }
+
+    .location-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .location-card.selected {
+      border-color: var(--accent-color);
+      background-color: rgba(200, 159, 83, 0.02);
+    }
+
+    .card-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    .card-badge {
+      display: inline-block;
+      align-self: flex-start;
+      background-color: rgba(79, 111, 82, 0.1);
+      color: var(--secondary-color);
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+
+    .card-meta {
+      font-size: 0.75rem;
+      color: #8fa096;
+      margin-top: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .card-photo-thumb {
+      width: 75px;
+      height: 75px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(79, 111, 82, 0.25);
+      outline: none;
+    }
+
+    .form-control:focus {
+      border-color: var(--accent-color);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+    }
+
+    .btn {
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background-color: var(--accent-color);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    .btn-gps {
+      background-color: #4a6fa5;
+      color: white;
+      width: 100%;
+    }
+
+    .btn-gps:hover {
+      background-color: #3b5a88;
+    }
+
+    .file-upload-container {
+      border: 2px dashed rgba(79, 111, 82, 0.25);
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+      position: relative;
+      background-color: white;
+    }
+
+    .file-upload-input {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .upload-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+    }
+
+    .image-preview {
+      display: none;
+      max-width: 100%;
+      max-height: 150px;
+      object-fit: contain;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+
+    .map-popup-content {
+      max-width: 250px;
+    }
+
+    .map-popup-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    .map-popup-badge {
+      display: inline-block;
+      background-color: rgba(200, 159, 83, 0.15);
+      color: #9d762d;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    .map-popup-img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .map-popup-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .map-popup-nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 8px;
+      background-color: #db4437;
+      color: white !important;
+      text-decoration: none;
+      font-weight: 700;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 768px) {
+      .main-container {
+        flex-direction: column;
+      }
+      #map {
+        height: 40vh;
+      }
+      .sidebar {
+        width: 100%;
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><span class="logo-emoji">🌿</span>清明尋陵 <span style="font-weight:300; font-size:1rem;">| 掃墓地圖協作系統 (雲端版)</span></h1>
+    <div class="subtitle">永久免費雲端版</div>
+  </header>
+
+  <div class="main-container">
+    <div id="map"></div>
+
+    <div class="sidebar">
+      <div class="tabs-container">
+        <button class="tab-btn active" onclick="switchTab('list-tab')">🔍 尋找墓地</button>
+        <button class="tab-btn" onclick="switchTab('add-tab')">📍 新增記錄</button>
+      </div>
+
+      <div id="list-tab" class="panel panel-content active">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" class="search-input" placeholder="輸入墓地名稱或祖先姓名搜尋..." oninput="filterLocations()">
+        </div>
+
+        <div id="location-list" class="location-list">
+          <!-- 動態載入 -->
+        </div>
+      </div>
+
+      <div id="add-tab" class="panel panel-content">
+        <div class="tip-card">
+          🎯 <strong>標記方式：</strong><br>
+          1. 站在現場點擊 <strong>[抓取手機位置]</strong>。<br>
+          2. 或直接在<strong>地圖上點一下</strong>，系統會自動帶入下方經緯度。
+        </div>
+
+        <form id="add-location-form" onsubmit="submitForm(event)">
+          <button type="button" id="gps-btn" class="btn btn-gps" onclick="getCurrentLocation()">
+            📍 抓取目前手機 GPS 位置
+          </button>
+          <div id="gps-status" style="font-size: 0.78rem; text-align: center; color: var(--secondary-color); margin-top: -8px;"></div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="lat">緯度 (Latitude)</label>
+              <input type="number" id="lat" name="lat" step="any" class="form-control" placeholder="定位坐標" required>
+            </div>
+            <div class="form-group">
+              <label for="lng">經度 (Longitude)</label>
+              <input type="number" id="lng" name="lng" step="any" class="form-control" placeholder="定位坐標" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="name">墓地俗稱 / 名稱 *</label>
+            <input type="text" id="name" name="name" class="form-control" placeholder="例如：大尖山阿公墓" required>
+          </div>
+
+          <div class="form-group">
+            <label for="ancestor">供奉祖先 / 堂號</label>
+            <input type="text" id="ancestor" name="ancestor" class="form-control" placeholder="例如：顯考 林公諱登科">
+          </div>
+
+          <div class="form-group">
+            <label for="description">路線指引 / 特徵描述 / 備忘</label>
+            <textarea id="description" name="description" class="form-control" rows="3" placeholder="例如：金爐旁小徑走進去、在紅磚屋後面"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="recorder">記錄人姓名 *</label>
+            <input type="text" id="recorder" name="recorder" class="form-control" placeholder="例如：大堂哥小明" required>
+          </div>
+
+          <div class="form-group">
+            <label>現場實拍照片</label>
+            <div class="file-upload-container">
+              <input type="file" id="photo" name="photo" class="file-upload-input" accept="image/*" onchange="previewImage(event)">
+              <div class="upload-placeholder" id="upload-placeholder">
+                <span class="icon">📸</span>
+                <span>點此拍現場照片或從相簿選擇</span>
+              </div>
+              <img id="img-preview" class="image-preview" src="" alt="照片預覽">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
+            💾 儲存並新增墓地
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- Supabase CDN (用於直接連線雲端資料庫) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    // ==========================================
+    // ⚠️ 請填入您的 Supabase 連線資訊 (註冊後取得)
+    // ==========================================
+    const SUPABASE_URL = 'https://kudfufxgvnewyhahpxkn.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_ANgFMxIy_wLOIawNqmfqOQ_OgtETx0i';
+    
+    let supabase;
+    if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+      supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } else {
+      alert("請先在 index_supabase.html 的程式碼第 471 行填入您的 Supabase URL 與 Anon Key！");
+    }
+
+    let map;
+    let markersGroup;
+    let tempMarker = null;
+    let allLocations = [];
+
+    // 初始化地圖
+    function initMap() {
+      map = L.map('map').setView([23.973875, 120.982024], 8);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      markersGroup = L.layerGroup().addTo(map);
+
+      map.on('click', function(e) {
+        setTempMarker(e.latlng.lat, e.latlng.lng);
+      });
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(position) {
+            map.setView([position.coords.latitude, position.coords.longitude], 13);
+          },
+          function() {},
+          { timeout: 5000 }
+        );
+      }
+    }
+
+    function setTempMarker(lat, lng) {
+      if (tempMarker) map.removeLayer(tempMarker);
+      tempMarker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      tempMarker.bindPopup("📍 您選擇的標記位置<br><span style='font-size:0.8rem; color:#888;'>可拖曳微調</span>").openPopup();
+
+      document.getElementById('lat').value = lat.toFixed(7);
+      document.getElementById('lng').value = lng.toFixed(7);
+
+      tempMarker.on('dragend', function() {
+        let pos = tempMarker.getLatLng();
+        document.getElementById('lat').value = pos.lat.toFixed(7);
+        document.getElementById('lng').value = pos.lng.toFixed(7);
+      });
+
+      switchTab('add-tab');
+    }
+
+    function getCurrentLocation() {
+      const gpsBtn = document.getElementById('gps-btn');
+      const gpsStatus = document.getElementById('gps-status');
+      if (!navigator.geolocation) {
+        alert("您的瀏覽器不支援 GPS。");
+        return;
+      }
+      gpsBtn.disabled = true;
+      gpsBtn.innerText = "🛰️ 正在抓取 GPS...";
+      gpsStatus.innerText = "請允許瀏覽器存取位置資訊...";
+
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          gpsBtn.disabled = false;
+          gpsBtn.innerText = "📍 抓取目前手機 GPS 位置";
+          gpsStatus.innerHTML = `取得成功！精度誤差約為 ${position.coords.accuracy.toFixed(1)} 公尺`;
+          setTempMarker(lat, lng);
+          map.flyTo([lat, lng], 17);
+        },
+        function(error) {
+          gpsBtn.disabled = false;
+          gpsBtn.innerText = "📍 抓取目前手機 GPS 位置";
+          gpsStatus.innerText = "定位失敗，請確認 GPS 是否開啟。";
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+      const index = tabId === 'list-tab' ? 0 : 1;
+      document.querySelectorAll('.tab-btn')[index].classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    function previewImage(event) {
+      const input = event.target;
+      const preview = document.getElementById('img-preview');
+      const placeholder = document.getElementById('upload-placeholder');
+      if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          preview.src = e.target.result;
+          preview.style.display = 'block';
+          placeholder.style.display = 'none';
+        }
+        reader.readAsDataURL(input.files[0]);
+      }
+    }
+
+    // 🎯 [Supabase 串接]：從雲端資料庫讀取所有墓地
+    async function loadLocations() {
+      if (!supabase) return;
+      try {
+        const { data, error } = await supabase
+          .from('locations')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        
+        allLocations = data || [];
+        renderLocationList(allLocations);
+        renderMapMarkers(allLocations);
+      } catch (error) {
+        console.error('載入資料失敗:', error);
+        document.getElementById('location-list').innerHTML = `
+          <div class="empty-state">
+            <p>連線 Supabase 失敗，請確認 API 金鑰與 Table 設定是否正確。<br>錯誤資訊：${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderMapMarkers(locations) {
+      markersGroup.clearLayers();
+      locations.forEach(loc => {
+        const customIcon = L.divIcon({
+          html: `<div style="background-color: var(--primary-color); border: 2px solid var(--accent-color); width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><div style="background-color: white; width: 10px; height: 10px; border-radius: 50%;"></div></div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 26],
+          popupAnchor: [0, -26],
+          className: 'custom-map-pin'
+        });
+
+        const marker = L.marker([loc.lat, loc.lng], { icon: customIcon }).addTo(markersGroup);
+
+        let popupHTML = `
+          <div class="map-popup-content">
+            <div class="map-popup-title">${loc.name}</div>
+        `;
+        
+        if (loc.ancestor) popupHTML += `<span class="map-popup-badge">供奉: ${loc.ancestor}</span>`;
+        if (loc.photo_url) popupHTML += `<img src="${loc.photo_url}" class="map-popup-img" alt="墓地照" onclick="openFullscreenPhoto('${loc.photo_url}')">`;
+        if (loc.description) popupHTML += `<div class="map-popup-desc"><strong>特徵備忘：</strong><br>${loc.description.replace(/\n/g, '<br>')}</div>`;
+
+        popupHTML += `
+            <div style="font-size:0.75rem; color:#8fa096; margin-bottom:8px;">記錄人: ${loc.recorder}</div>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}" target="_blank" class="map-popup-nav-btn">
+              🚗 開啟 Google Maps 導航
+            </a>
+          </div>
+        `;
+
+        marker.bindPopup(popupHTML);
+        marker.on('click', () => highlightListCard(loc.id));
+      });
+    }
+
+    function renderLocationList(locations) {
+      const listContainer = document.getElementById('location-list');
+      listContainer.innerHTML = '';
+
+      if (locations.length === 0) {
+        listContainer.innerHTML = `
+          <div class="empty-state">
+            <p>目前還沒有任何墓地記錄。<br>歡迎新增第一筆記錄！</p>
+          </div>
+        `;
+        return;
+      }
+
+      locations.forEach(loc => {
+        const card = document.createElement('div');
+        card.className = 'location-card';
+        card.id = `card-${loc.id}`;
+        card.onclick = () => focusLocation(loc);
+
+        let photoHTML = loc.photo_url ? `<img src="${loc.photo_url}" class="card-photo-thumb" alt="${loc.name}">` : '';
+
+        card.innerHTML = `
+          <div class="card-info">
+            <div class="card-title">${loc.name}</div>
+            ${loc.ancestor ? `<span class="card-badge">祖先: ${loc.ancestor}</span>` : ''}
+            <div class="card-description">${loc.description || '無描述。'}</div>
+            <div class="card-meta">
+              <span>👤 記錄人: ${loc.recorder}</span>
+            </div>
+          </div>
+          ${photoHTML}
+        `;
+        listContainer.appendChild(card);
+      });
+    }
+
+    function focusLocation(loc) {
+      highlightListCard(loc.id);
+      markersGroup.eachLayer(marker => {
+        const latLng = marker.getLatLng();
+        if (Math.abs(latLng.lat - loc.lat) < 0.000001 && Math.abs(latLng.lng - loc.lng) < 0.000001) {
+          map.flyTo([loc.lat, loc.lng], 17, { duration: 1.5 });
+          setTimeout(() => marker.openPopup(), 1500);
+        }
+      });
+    }
+
+    function highlightListCard(id) {
+      document.querySelectorAll('.location-card').forEach(card => card.classList.remove('selected'));
+      const activeCard = document.getElementById(`card-${id}`);
+      if (activeCard) {
+        activeCard.classList.add('selected');
+        activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function filterLocations() {
+      const query = document.getElementById('search-input').value.toLowerCase().trim();
+      const filtered = allLocations.filter(loc => {
+        return (
+          loc.name.toLowerCase().includes(query) ||
+          loc.ancestor.toLowerCase().includes(query) ||
+          (loc.description && loc.description.toLowerCase().includes(query)) ||
+          loc.recorder.toLowerCase().includes(query)
+        );
+      });
+      renderLocationList(filtered);
+    }
+
+    // 🎯 [Supabase 串接]：上傳照片與儲存資料到雲端
+    async function submitForm(event) {
+      event.preventDefault();
+      if (!supabase) {
+        alert("尚未填入您的 Supabase 設定，無法儲存！");
+        return;
+      }
+      
+      const form = document.getElementById('add-location-form');
+      const formData = new FormData(form);
+
+      const lat = parseFloat(formData.get('lat'));
+      const lng = parseFloat(formData.get('lng'));
+      const name = formData.get('name');
+      const ancestor = formData.get('ancestor');
+      const description = formData.get('description');
+      const recorder = formData.get('recorder');
+
+      if (isNaN(lat) || isNaN(lng)) {
+        alert('請先在地圖點擊位置或取得手機定位以帶入經緯度！');
+        return;
+      }
+
+      // 顯示儲存中動畫/狀態
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalText = submitBtn.innerText;
+      submitBtn.disabled = true;
+      submitBtn.innerText = "⏳ 正在上傳雲端...";
+
+      try {
+        let photoUrl = null;
+        const photoFile = document.getElementById('photo').files[0];
+
+        // 1. 如果有選擇照片，先上傳到 Supabase Storage
+        if (photoFile) {
+          const fileExt = photoFile.name.split('.').pop();
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+          
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('photos')
+            .upload(fileName, photoFile);
+
+          if (uploadError) throw uploadError;
+
+          // 取得公開下載連結
+          const { data: { publicUrl } } = supabase.storage
+            .from('photos')
+            .getPublicUrl(fileName);
+            
+          photoUrl = publicUrl;
+        }
+
+        // 2. 將文字欄位與照片網址存入 PostgreSQL 資料庫
+        const { data: insertData, error: insertError } = await supabase
+          .from('locations')
+          .insert([{
+            name: name.trim(),
+            ancestor: ancestor ? ancestor.trim() : '',
+            description: description ? description.trim() : '',
+            recorder: recorder ? recorder.trim() : '匿名家族成員',
+            lat: lat,
+            lng: lng,
+            photo_url: photoUrl
+          }])
+          .select();
+
+        if (insertError) throw insertError;
+
+        alert(`成功新增墓地記錄：${name}！`);
+        
+        form.reset();
+        document.getElementById('img-preview').style.display = 'none';
+        document.getElementById('upload-placeholder').style.display = 'flex';
+        document.getElementById('gps-status').innerText = '';
+
+        if (tempMarker) {
+          map.removeLayer(tempMarker);
+          tempMarker = null;
+        }
+
+        await loadLocations();
+        switchTab('list-tab');
+        if (insertData && insertData[0]) {
+          focusLocation(insertData[0]);
+        }
+
+      } catch (error) {
+        alert('新增失敗：' + error.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalText;
+      }
+    }
+
+    function openFullscreenPhoto(src) {
+      const overlay = document.createElement('div');
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100vw';
+      overlay.style.height = '100vh';
+      overlay.style.backgroundColor = 'rgba(0,0,0,0.9)';
+      overlay.style.zIndex = '9999';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.cursor = 'pointer';
+
+      const img = document.createElement('img');
+      img.src = src;
+      img.style.maxWidth = '95%';
+      img.style.maxHeight = '95%';
+      img.style.objectFit = 'contain';
+      img.style.borderRadius = '8px';
+      img.style.border = '2px solid white';
+
+      overlay.appendChild(img);
+      document.body.appendChild(overlay);
+      overlay.onclick = () => document.body.removeChild(overlay);
+    }
+
+    window.onload = async () => {
+      initMap();
+      if (supabase) {
+        await loadLocations();
+      }
+    };
+  </script>
+</body>
+</html>
