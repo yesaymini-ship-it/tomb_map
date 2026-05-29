@@ -148,7 +148,7 @@
     }
 
     .panel.active {
-      display: block;
+      display: flex;
     }
 
     .search-box {
@@ -525,7 +525,10 @@
               💾 儲存並新增墓地
             </button>
             <button type="button" id="cancel-edit-btn" class="btn" style="display:none; background-color:#e0e0e0; color:#333; flex:1;" onclick="cancelEdit()">
-              取消編輯
+              取消
+            </button>
+            <button type="button" id="delete-record-btn" class="btn" style="display:none; background-color:#db4437; color:white; flex:1; padding: 12px 10px;" onclick="deleteRecord()">
+              🗑️ 刪除
             </button>
           </div>
         </form>
@@ -569,7 +572,7 @@
         return;
       }
       const dataStr = JSON.stringify(allLocations, null, 2);
-      const blob = new Blob([dataStr], { type: "application/json" });
+      const blob = new Blob(["\uFEFF" + dataStr], { type: "application/json;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -807,6 +810,7 @@
       
       document.getElementById('submit-btn').innerText = "💾 儲存修改";
       document.getElementById('cancel-edit-btn').style.display = 'block';
+      document.getElementById('delete-record-btn').style.display = 'block';
       
       if (tempMarker) map.removeLayer(tempMarker);
       tempMarker = L.marker([loc.lat, loc.lng], { draggable: true }).addTo(map);
@@ -828,11 +832,39 @@
 
 
     
+    
+    async function deleteRecord() {
+      if (!editingId) return;
+      if (!confirm("確定要永久刪除這筆墓地記錄嗎？這個操作無法復原。")) return;
+      
+      const btn = document.getElementById('delete-record-btn');
+      const originalText = btn.innerText;
+      btn.innerText = "刪除中...";
+      btn.disabled = true;
+
+      try {
+        const { error } = await supabaseClient.from('locations').delete().eq('id', editingId);
+        if (error) throw error;
+        
+        alert("已成功刪除！");
+        cancelEdit();
+        await loadLocations();
+        switchTab('list-tab');
+      } catch (err) {
+        alert("刪除失敗：" + err.message + "\n\n請確定您已經在 Supabase 設定了刪除權限 (Delete Policy)！");
+      } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+      }
+    }
+
+
     function cancelEdit() {
       editingId = null;
       document.getElementById('add-location-form').reset();
       document.getElementById('submit-btn').innerText = "💾 儲存並新增墓地";
       document.getElementById('cancel-edit-btn').style.display = 'none';
+      document.getElementById('delete-record-btn').style.display = 'none';
       document.getElementById('img-preview-container').innerHTML = '';
       selectedFiles = [];
       existingPhotoUrls = [];
