@@ -438,7 +438,10 @@
 
   <header>
     <h1><span class="logo-emoji">🌿</span>清明尋陵 <span style="font-weight:300; font-size:1rem;">| 掃墓地圖協作系統 (雲端版)</span></h1>
-    <div class="subtitle">永久免費雲端版</div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button onclick="exportData()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:var(--accent-color); color:white;">📥 備份資料</button>
+      <div class="subtitle">永久免費雲端版</div>
+    </div>
   </header>
 
   <div class="main-container">
@@ -560,6 +563,24 @@
     let tempMarker = null;
     let allLocations = [];
 
+    function exportData() {
+      if (!allLocations || allLocations.length === 0) {
+        alert("目前沒有任何資料可以備份喔！");
+        return;
+      }
+      const dataStr = JSON.stringify(allLocations, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tomb_map_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+
     // 初始化地圖
     function initMap() {
       map = L.map('map').setView([23.973875, 120.982024], 8);
@@ -648,6 +669,7 @@
 
     
     let selectedFiles = [];
+    let existingPhotoUrls = [];
     let editingId = null;
 
     async function compressImage(file, maxSizeKB = 500) {
@@ -695,6 +717,7 @@
       });
     }
 
+    
     async function previewImages(event) {
       const input = event.target;
       const container = document.getElementById('img-preview-container');
@@ -702,15 +725,15 @@
       
       if (!input.files || input.files.length === 0) return;
       
-      if (input.files.length + selectedFiles.length > 10) {
-        alert("最多只能上傳 10 張照片！");
+      if (input.files.length + selectedFiles.length + existingPhotoUrls.length > 10) {
+        alert("總照片數最多只能 10 張！");
         return;
       }
 
       placeholder.innerHTML = "<span class='icon'>⏳</span><span>正在壓縮照片中...</span>";
       
       for (let i = 0; i < input.files.length; i++) {
-        if (selectedFiles.length >= 10) break;
+        if (selectedFiles.length + existingPhotoUrls.length >= 10) break;
         const compressedFile = await compressImage(input.files[i], 500);
         selectedFiles.push(compressedFile);
         
@@ -726,19 +749,17 @@
           const index = selectedFiles.indexOf(compressedFile);
           if (index > -1) selectedFiles.splice(index, 1);
           container.removeChild(img);
-          if (selectedFiles.length === 0) {
-            placeholder.style.display = 'flex';
-          }
-          placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (已選 ${selectedFiles.length}/10)</span>`;
+          updatePlaceholder();
         };
         container.appendChild(img);
       }
       
-      placeholder.style.display = selectedFiles.length >= 10 ? 'none' : 'flex';
-      placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (已選 ${selectedFiles.length}/10)</span>`;
+      updatePlaceholder();
       input.value = ''; 
     }
 
+
+    
     function editLocation(id) {
       const loc = allLocations.find(l => l.id === id);
       if (!loc) return;
@@ -751,11 +772,38 @@
       document.getElementById('description').value = loc.description || '';
       document.getElementById('recorder').value = loc.recorder || '';
       
-      document.getElementById('img-preview-container').innerHTML = '';
+      const container = document.getElementById('img-preview-container');
+      container.innerHTML = '';
       selectedFiles = [];
+      existingPhotoUrls = [];
+      
+      if (loc.photo_url) {
+        if (loc.photo_url.startsWith('[')) {
+          try { existingPhotoUrls = JSON.parse(loc.photo_url); } catch(e) { existingPhotoUrls = [loc.photo_url]; }
+        } else {
+          existingPhotoUrls = [loc.photo_url];
+        }
+      }
+
+      existingPhotoUrls.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = 'image-preview';
+        img.style.display = 'block';
+        img.style.width = '70px';
+        img.style.height = '70px';
+        img.style.objectFit = 'cover';
+        img.onclick = function() {
+          const index = existingPhotoUrls.indexOf(url);
+          if (index > -1) existingPhotoUrls.splice(index, 1);
+          container.removeChild(img);
+          updatePlaceholder();
+        };
+        container.appendChild(img);
+      });
+
       const placeholder = document.getElementById('upload-placeholder');
-      placeholder.style.display = 'flex';
-      placeholder.innerHTML = `<span class="icon">📸</span><span>點此重新上傳照片 (將覆蓋舊照片)</span>`;
+      updatePlaceholder();
       
       document.getElementById('submit-btn').innerText = "💾 儲存修改";
       document.getElementById('cancel-edit-btn').style.display = 'block';
@@ -767,6 +815,19 @@
       switchTab('add-tab');
     }
 
+    function updatePlaceholder() {
+      const placeholder = document.getElementById('upload-placeholder');
+      const total = selectedFiles.length + existingPhotoUrls.length;
+      if (total >= 10) {
+        placeholder.style.display = 'none';
+      } else {
+        placeholder.style.display = 'flex';
+        placeholder.innerHTML = `<span class="icon">📸</span><span>點此上傳新照片 (目前共 ${total}/10 張)</span>`;
+      }
+    }
+
+
+    
     function cancelEdit() {
       editingId = null;
       document.getElementById('add-location-form').reset();
@@ -774,6 +835,7 @@
       document.getElementById('cancel-edit-btn').style.display = 'none';
       document.getElementById('img-preview-container').innerHTML = '';
       selectedFiles = [];
+      existingPhotoUrls = [];
       
       const placeholder = document.getElementById('upload-placeholder');
       placeholder.style.display = 'flex';
@@ -786,6 +848,7 @@
       document.getElementById('gps-status').innerText = '';
       switchTab('list-tab');
     }
+
 
 
     // 🎯 [Supabase 串接]：從雲端資料庫讀取所有墓地
@@ -1002,12 +1065,9 @@
           }
         }
 
-        let photoUrlsStr = finalPhotoUrls.length > 0 ? JSON.stringify(finalPhotoUrls) : null;
-
-        if (editingId && finalPhotoUrls.length === 0) {
-          const loc = allLocations.find(l => l.id === editingId);
-          if (loc) photoUrlsStr = loc.photo_url;
-        }
+        
+        let allUrls = [...existingPhotoUrls, ...finalPhotoUrls];
+        let photoUrlsStr = allUrls.length > 0 ? JSON.stringify(allUrls) : null;
 
         const payload = {
           name: name.trim(),
@@ -1018,6 +1078,7 @@
           lng: lng,
           photo_url: photoUrlsStr
         };
+
 
         if (editingId) {
           const { error } = await supabaseClient.from('locations').update(payload).eq('id', editingId);
