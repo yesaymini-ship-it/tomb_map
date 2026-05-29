@@ -539,7 +539,7 @@
     
     let supabase;
     if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
-      supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } else {
       alert("請先在 index_supabase.html 的程式碼第 471 行填入您的 Supabase URL 與 Anon Key！");
     }
