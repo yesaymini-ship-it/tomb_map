@@ -423,7 +423,9 @@
         flex-direction: column;
       }
       #map {
-        height: 40vh;
+        flex: none;
+        height: 45vh;
+        width: 100%;
       }
       .sidebar {
         width: 100%;
@@ -630,6 +632,13 @@
       const index = tabId === 'list-tab' ? 0 : 1;
       document.querySelectorAll('.tab-btn')[index].classList.add('active');
       document.getElementById(tabId).classList.add('active');
+
+      // 重新計算地圖大小，確保手機版切換分頁時地圖不會破圖或隱藏
+      setTimeout(() => {
+        if (map) {
+          map.invalidateSize();
+        }
+      }, 100);
     }
 
     function previewImage(event) {
