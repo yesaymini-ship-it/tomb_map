@@ -508,18 +508,23 @@
           <div class="form-group">
             <label>現場實拍照片</label>
             <div class="file-upload-container">
-              <input type="file" id="photo" name="photo" class="file-upload-input" accept="image/*" onchange="previewImage(event)">
+              <input type="file" id="photo" name="photo" class="file-upload-input" accept="image/*" multiple onchange="previewImages(event)">
               <div class="upload-placeholder" id="upload-placeholder">
                 <span class="icon">📸</span>
-                <span>點此拍現場照片或從相簿選擇</span>
+                <span>點此拍現場照片或從相簿選擇 (最多10張)</span>
               </div>
-              <img id="img-preview" class="image-preview" src="" alt="照片預覽">
+              <div id="img-preview-container" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"></div>
             </div>
           </div>
 
-          <button type="submit" class="btn btn-primary" style="margin-top: 10px;">
-            💾 儲存並新增墓地
-          </button>
+          <div style="display:flex; gap:10px; margin-top: 10px;">
+            <button type="submit" id="submit-btn" class="btn btn-primary" style="flex:1;">
+              💾 儲存並新增墓地
+            </button>
+            <button type="button" id="cancel-edit-btn" class="btn" style="display:none; background-color:#e0e0e0; color:#333; flex:1;" onclick="cancelEdit()">
+              取消編輯
+            </button>
+          </div>
         </form>
       </div>
 
@@ -641,20 +646,147 @@
       }, 100);
     }
 
-    function previewImage(event) {
-      const input = event.target;
-      const preview = document.getElementById('img-preview');
-      const placeholder = document.getElementById('upload-placeholder');
-      if (input.files && input.files[0]) {
+    
+    let selectedFiles = [];
+    let editingId = null;
+
+    async function compressImage(file, maxSizeKB = 500) {
+      return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = function(e) {
-          preview.src = e.target.result;
-          preview.style.display = 'block';
-          placeholder.style.display = 'none';
-        }
-        reader.readAsDataURL(input.files[0]);
-      }
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+          const img = new Image();
+          img.src = event.target.result;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const MAX_SIZE = 1920;
+            if (width > height && width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            } else if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            let quality = 0.8;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            
+            const maxBytes = maxSizeKB * 1024;
+            while (dataUrl.length * 0.75 > maxBytes && quality > 0.1) {
+              quality -= 0.1;
+              dataUrl = canvas.toDataURL('image/jpeg', quality);
+            }
+            
+            fetch(dataUrl)
+              .then(res => res.blob())
+              .then(blob => {
+                const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
+                resolve(newFile);
+              });
+          };
+        };
+        reader.onerror = error => reject(error);
+      });
     }
+
+    async function previewImages(event) {
+      const input = event.target;
+      const container = document.getElementById('img-preview-container');
+      const placeholder = document.getElementById('upload-placeholder');
+      
+      if (!input.files || input.files.length === 0) return;
+      
+      if (input.files.length + selectedFiles.length > 10) {
+        alert("最多只能上傳 10 張照片！");
+        return;
+      }
+
+      placeholder.innerHTML = "<span class='icon'>⏳</span><span>正在壓縮照片中...</span>";
+      
+      for (let i = 0; i < input.files.length; i++) {
+        if (selectedFiles.length >= 10) break;
+        const compressedFile = await compressImage(input.files[i], 500);
+        selectedFiles.push(compressedFile);
+        
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(compressedFile);
+        img.className = 'image-preview';
+        img.style.display = 'block';
+        img.style.width = '70px';
+        img.style.height = '70px';
+        img.style.objectFit = 'cover';
+        
+        img.onclick = function() {
+          const index = selectedFiles.indexOf(compressedFile);
+          if (index > -1) selectedFiles.splice(index, 1);
+          container.removeChild(img);
+          if (selectedFiles.length === 0) {
+            placeholder.style.display = 'flex';
+          }
+          placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (已選 ${selectedFiles.length}/10)</span>`;
+        };
+        container.appendChild(img);
+      }
+      
+      placeholder.style.display = selectedFiles.length >= 10 ? 'none' : 'flex';
+      placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (已選 ${selectedFiles.length}/10)</span>`;
+      input.value = ''; 
+    }
+
+    function editLocation(id) {
+      const loc = allLocations.find(l => l.id === id);
+      if (!loc) return;
+      
+      editingId = id;
+      document.getElementById('lat').value = loc.lat;
+      document.getElementById('lng').value = loc.lng;
+      document.getElementById('name').value = loc.name;
+      document.getElementById('ancestor').value = loc.ancestor || '';
+      document.getElementById('description').value = loc.description || '';
+      document.getElementById('recorder').value = loc.recorder || '';
+      
+      document.getElementById('img-preview-container').innerHTML = '';
+      selectedFiles = [];
+      const placeholder = document.getElementById('upload-placeholder');
+      placeholder.style.display = 'flex';
+      placeholder.innerHTML = `<span class="icon">📸</span><span>點此重新上傳照片 (將覆蓋舊照片)</span>`;
+      
+      document.getElementById('submit-btn').innerText = "💾 儲存修改";
+      document.getElementById('cancel-edit-btn').style.display = 'block';
+      
+      if (tempMarker) map.removeLayer(tempMarker);
+      tempMarker = L.marker([loc.lat, loc.lng], { draggable: true }).addTo(map);
+      map.flyTo([loc.lat, loc.lng], 17);
+      
+      switchTab('add-tab');
+    }
+
+    function cancelEdit() {
+      editingId = null;
+      document.getElementById('add-location-form').reset();
+      document.getElementById('submit-btn').innerText = "💾 儲存並新增墓地";
+      document.getElementById('cancel-edit-btn').style.display = 'none';
+      document.getElementById('img-preview-container').innerHTML = '';
+      selectedFiles = [];
+      
+      const placeholder = document.getElementById('upload-placeholder');
+      placeholder.style.display = 'flex';
+      placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (最多10張)</span>`;
+      
+      if (tempMarker) {
+        map.removeLayer(tempMarker);
+        tempMarker = null;
+      }
+      document.getElementById('gps-status').innerText = '';
+      switchTab('list-tab');
+    }
+
 
     // 🎯 [Supabase 串接]：從雲端資料庫讀取所有墓地
     async function loadLocations() {
@@ -680,6 +812,7 @@
       }
     }
 
+    
     function renderMapMarkers(locations) {
       markersGroup.clearLayers();
       locations.forEach(loc => {
@@ -693,19 +826,39 @@
 
         const marker = L.marker([loc.lat, loc.lng], { icon: customIcon }).addTo(markersGroup);
 
+        let photos = [];
+        if (loc.photo_url) {
+          if (loc.photo_url.startsWith('[')) {
+            try { photos = JSON.parse(loc.photo_url); } catch(e) { photos = [loc.photo_url]; }
+          } else {
+            photos = [loc.photo_url];
+          }
+        }
+
         let popupHTML = `
           <div class="map-popup-content">
             <div class="map-popup-title">${loc.name}</div>
         `;
         
         if (loc.ancestor) popupHTML += `<span class="map-popup-badge">供奉: ${loc.ancestor}</span>`;
-        if (loc.photo_url) popupHTML += `<img src="${loc.photo_url}" class="map-popup-img" alt="墓地照" onclick="openFullscreenPhoto('${loc.photo_url}')">`;
+        
+        if (photos.length > 0) {
+          popupHTML += `<div style="display:flex; gap:4px; overflow-x:auto; margin-bottom:8px; padding-bottom:4px;">`;
+          photos.forEach(url => {
+            popupHTML += `<img src="${url}" class="map-popup-img" style="width:80px; height:80px; flex-shrink:0; margin-bottom:0;" alt="墓地照" onclick="openFullscreenPhoto('${url}')">`;
+          });
+          popupHTML += `</div>`;
+        }
+
         if (loc.description) popupHTML += `<div class="map-popup-desc"><strong>特徵備忘：</strong><br>${loc.description.replace(/\n/g, '<br>')}</div>`;
 
         popupHTML += `
             <div style="font-size:0.75rem; color:#8fa096; margin-bottom:8px;">記錄人: ${loc.recorder}</div>
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+              <button onclick="editLocation(${loc.id})" style="flex:1; padding:6px; background-color:var(--secondary-color); color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.8rem;">✏️ 編輯</button>
+            </div>
             <a href="https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}" target="_blank" class="map-popup-nav-btn">
-              🚗 開啟 Google Maps 導航
+              🚗 導航
             </a>
           </div>
         `;
@@ -715,6 +868,8 @@
       });
     }
 
+
+    
     function renderLocationList(locations) {
       const listContainer = document.getElementById('location-list');
       listContainer.innerHTML = '';
@@ -732,17 +887,28 @@
         const card = document.createElement('div');
         card.className = 'location-card';
         card.id = `card-${loc.id}`;
-        card.onclick = () => focusLocation(loc);
+        
+        let photos = [];
+        if (loc.photo_url) {
+          if (loc.photo_url.startsWith('[')) {
+            try { photos = JSON.parse(loc.photo_url); } catch(e) { photos = [loc.photo_url]; }
+          } else {
+            photos = [loc.photo_url];
+          }
+        }
 
-        let photoHTML = loc.photo_url ? `<img src="${loc.photo_url}" class="card-photo-thumb" alt="${loc.name}">` : '';
+        let photoHTML = photos.length > 0 ? `<img src="${photos[0]}" class="card-photo-thumb" alt="${loc.name}" style="align-self: flex-start;">` : '';
 
         card.innerHTML = `
-          <div class="card-info">
+          <div class="card-info" onclick="focusLocation(${loc.id})" style="cursor:pointer;">
             <div class="card-title">${loc.name}</div>
             ${loc.ancestor ? `<span class="card-badge">祖先: ${loc.ancestor}</span>` : ''}
-            <div class="card-description">${loc.description || '無描述。'}</div>
+            <div class="card-description" style="font-size:0.85rem; color:#53685e; margin-top:4px;">${loc.description || '無描述。'}</div>
             <div class="card-meta">
               <span>👤 記錄人: ${loc.recorder}</span>
+            </div>
+            <div style="margin-top:6px;">
+              <button onclick="event.stopPropagation(); editLocation(${loc.id})" style="padding:4px 10px; background-color:var(--secondary-color); color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">✏️ 編輯</button>
             </div>
           </div>
           ${photoHTML}
@@ -751,7 +917,10 @@
       });
     }
 
-    function focusLocation(loc) {
+
+    function focusLocation(id) {
+      const loc = allLocations.find(l => l.id === id);
+      if (!loc) return;
       highlightListCard(loc.id);
       markersGroup.eachLayer(marker => {
         const latLng = marker.getLatLng();
@@ -785,6 +954,7 @@
     }
 
     // 🎯 [Supabase 串接]：上傳照片與儲存資料到雲端
+    
     async function submitForm(event) {
       event.preventDefault();
       if (!supabaseClient) {
@@ -807,76 +977,70 @@
         return;
       }
 
-      // 顯示儲存中動畫/狀態
-      const submitBtn = form.querySelector('button[type="submit"]');
+      const submitBtn = document.getElementById('submit-btn');
       const originalText = submitBtn.innerText;
       submitBtn.disabled = true;
-      submitBtn.innerText = "⏳ 正在上傳雲端...";
+      submitBtn.innerText = "⏳ 正在處理中...";
 
       try {
-        let photoUrl = null;
-        const photoFile = document.getElementById('photo').files[0];
+        let finalPhotoUrls = [];
 
-        // 1. 如果有選擇照片，先上傳到 Supabase Storage
-        if (photoFile) {
-          const fileExt = photoFile.name.split('.').pop();
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-          
-          const { data: uploadData, error: uploadError } = await supabaseClient.storage
-            .from('photos')
-            .upload(fileName, photoFile);
+        if (selectedFiles.length > 0) {
+          for (let file of selectedFiles) {
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.jpg`;
+            const { data: uploadData, error: uploadError } = await supabaseClient.storage
+              .from('photos')
+              .upload(fileName, file);
 
-          if (uploadError) throw uploadError;
+            if (uploadError) throw uploadError;
 
-          // 取得公開下載連結
-          const { data: { publicUrl } } = supabaseClient.storage
-            .from('photos')
-            .getPublicUrl(fileName);
-            
-          photoUrl = publicUrl;
+            const { data: { publicUrl } } = supabaseClient.storage
+              .from('photos')
+              .getPublicUrl(fileName);
+              
+            finalPhotoUrls.push(publicUrl);
+          }
         }
 
-        // 2. 將文字欄位與照片網址存入 PostgreSQL 資料庫
-        const { data: insertData, error: insertError } = await supabaseClient
-          .from('locations')
-          .insert([{
-            name: name.trim(),
-            ancestor: ancestor ? ancestor.trim() : '',
-            description: description ? description.trim() : '',
-            recorder: recorder ? recorder.trim() : '匿名家族成員',
-            lat: lat,
-            lng: lng,
-            photo_url: photoUrl
-          }])
-          .select();
+        let photoUrlsStr = finalPhotoUrls.length > 0 ? JSON.stringify(finalPhotoUrls) : null;
 
-        if (insertError) throw insertError;
-
-        alert(`成功新增墓地記錄：${name}！`);
-        
-        form.reset();
-        document.getElementById('img-preview').style.display = 'none';
-        document.getElementById('upload-placeholder').style.display = 'flex';
-        document.getElementById('gps-status').innerText = '';
-
-        if (tempMarker) {
-          map.removeLayer(tempMarker);
-          tempMarker = null;
+        if (editingId && finalPhotoUrls.length === 0) {
+          const loc = allLocations.find(l => l.id === editingId);
+          if (loc) photoUrlsStr = loc.photo_url;
         }
 
+        const payload = {
+          name: name.trim(),
+          ancestor: ancestor ? ancestor.trim() : '',
+          description: description ? description.trim() : '',
+          recorder: recorder ? recorder.trim() : '匿名家族成員',
+          lat: lat,
+          lng: lng,
+          photo_url: photoUrlsStr
+        };
+
+        if (editingId) {
+          const { error } = await supabaseClient.from('locations').update(payload).eq('id', editingId);
+          if (error) throw error;
+          alert(`成功修改墓地記錄：${name}！`);
+        } else {
+          const { error } = await supabaseClient.from('locations').insert([payload]);
+          if (error) throw error;
+          alert(`成功新增墓地記錄：${name}！`);
+        }
+
+        cancelEdit();
         await loadLocations();
         switchTab('list-tab');
-        if (insertData && insertData[0]) {
-          focusLocation(insertData[0]);
-        }
 
       } catch (error) {
-        alert('新增失敗：' + error.message);
+        alert('操作失敗：' + error.message);
       } finally {
         submitBtn.disabled = false;
         submitBtn.innerText = originalText;
       }
     }
+
 
     function openFullscreenPhoto(src) {
       const overlay = document.createElement('div');
