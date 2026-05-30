@@ -38,7 +38,7 @@
       font-family: 'Outfit', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: var(--bg-color);
       color: var(--text-main);
-      height: 100vh;
+      height: 100dvh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -79,7 +79,7 @@
       display: flex;
       flex-direction: row;
       position: relative;
-      height: calc(100vh - 54px);
+      height: calc(100dvh - 54px);
     }
 
     #map {
@@ -136,6 +136,7 @@
     .panel-content {
       flex: 1;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       padding: 20px;
       display: flex;
       flex-direction: column;
@@ -424,7 +425,7 @@
       }
       #map {
         flex: none;
-        height: 45vh;
+        height: 45dvh;
         width: 100%;
       }
       .sidebar {
@@ -432,6 +433,8 @@
         flex: 1;
       }
     }
+  
+    .sortable-ghost { opacity: 0.4; border: 2px dashed var(--accent-color); }
   </style>
 </head>
 <body>
@@ -537,6 +540,8 @@
     </div>
   </div>
 
+  <!-- SortableJS -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   
@@ -748,12 +753,18 @@
         img.style.height = '70px';
         img.style.objectFit = 'cover';
         img.style.cursor = 'pointer';
+        
+        img.dataset.type = 'new';
+        img.dataset.index = selectedFiles.length - 1; // It was just pushed
         img.onclick = function() {
-          const index = selectedFiles.indexOf(compressedFile);
-          if (index > -1) selectedFiles.splice(index, 1);
-          container.removeChild(img);
-          updatePlaceholder();
+          if (confirm("確定要刪除這張照片嗎？")) {
+            const index = selectedFiles.indexOf(compressedFile);
+            if (index > -1) selectedFiles.splice(index, 1);
+            container.removeChild(img);
+            updatePlaceholder();
+          }
         };
+
         container.appendChild(img);
       }
       
@@ -797,12 +808,18 @@
         img.style.height = '70px';
         img.style.objectFit = 'cover';
         img.style.cursor = 'pointer';
+        
+        img.dataset.type = 'existing';
+        img.dataset.url = url;
         img.onclick = function() {
-          const index = existingPhotoUrls.indexOf(url);
-          if (index > -1) existingPhotoUrls.splice(index, 1);
-          container.removeChild(img);
-          updatePlaceholder();
+          if (confirm("確定要刪除這張照片嗎？")) {
+            const index = existingPhotoUrls.indexOf(url);
+            if (index > -1) existingPhotoUrls.splice(index, 1);
+            container.removeChild(img);
+            updatePlaceholder();
+          }
         };
+
         container.appendChild(img);
       });
 
@@ -1099,8 +1116,22 @@
         }
 
         
-        let allUrls = [...existingPhotoUrls, ...finalPhotoUrls];
+        
+        let allUrls = [];
+        const container = document.getElementById('img-preview-container');
+        let newUploadIndex = 0;
+        
+        for (let child of container.children) {
+          if (child.dataset.type === 'existing') {
+            allUrls.push(child.dataset.url);
+          } else if (child.dataset.type === 'new') {
+            allUrls.push(finalPhotoUrls[newUploadIndex]);
+            newUploadIndex++;
+          }
+        }
+        
         let photoUrlsStr = allUrls.length > 0 ? JSON.stringify(allUrls) : null;
+
 
         const payload = {
           name: name.trim(),
@@ -1142,7 +1173,7 @@
       overlay.style.top = '0';
       overlay.style.left = '0';
       overlay.style.width = '100vw';
-      overlay.style.height = '100vh';
+      overlay.style.height = '100dvh';
       overlay.style.backgroundColor = 'rgba(0,0,0,0.9)';
       overlay.style.zIndex = '9999';
       overlay.style.display = 'flex';
@@ -1168,6 +1199,12 @@
       if (supabaseClient) {
         await loadLocations();
       }
+    
+      // 初始化拖曳排序
+      new Sortable(document.getElementById('img-preview-container'), {
+        animation: 150,
+        ghostClass: 'sortable-ghost'
+      });
     };
   </script>
 </body>
