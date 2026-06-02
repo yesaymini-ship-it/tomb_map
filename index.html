@@ -108,7 +108,8 @@
 
     .tab-btn {
       flex: 1;
-      padding: 16px;
+      padding: 12px 8px;
+      font-size: 0.9rem;
       text-align: center;
       border: none;
       background: none;
@@ -456,6 +457,7 @@
       <div class="tabs-container">
         <button class="tab-btn active" onclick="switchTab('list-tab')">🔍 尋找墓地</button>
         <button class="tab-btn" onclick="switchTab('add-tab')">📍 新增記錄</button>
+        <button class="tab-btn" onclick="switchTab('msg-tab')">💬 留言板</button>
       </div>
 
       <div id="list-tab" class="panel panel-content active">
@@ -662,12 +664,20 @@
       );
     }
 
+    
     function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
-      const index = tabId === 'list-tab' ? 0 : 1;
-      document.querySelectorAll('.tab-btn')[index].classList.add('active');
+      const tabs = ['list-tab', 'add-tab', 'msg-tab'];
+      const index = tabs.indexOf(tabId);
+      if (index > -1 && document.querySelectorAll('.tab-btn')[index]) {
+        document.querySelectorAll('.tab-btn')[index].classList.add('active');
+      }
       document.getElementById(tabId).classList.add('active');
+
+      if (tabId === 'msg-tab') {
+        loadMessages();
+      }
 
       // 重新計算地圖大小，確保手機版切換分頁時地圖不會破圖或隱藏
       setTimeout(() => {
@@ -676,6 +686,7 @@
         }
       }, 100);
     }
+
 
     
     let selectedFiles = [];
@@ -1208,6 +1219,71 @@
         ghostClass: 'sortable-ghost'
       });
     };
+  
+    async function loadMessages() {
+      if (!supabaseClient) return;
+      try {
+        const { data, error } = await supabaseClient
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        const container = document.getElementById('msg-list');
+        container.innerHTML = '';
+        
+        if (!data || data.length === 0) {
+          container.innerHTML = '<div class="empty-state">目前還沒有留言喔！來搶頭香吧！</div>';
+          return;
+        }
+        
+        data.forEach(msg => {
+          const dateStr = new Date(msg.created_at).toLocaleString('zh-TW');
+          container.innerHTML += `
+            <div style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); border-left: 3px solid var(--accent-color);">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                <span style="font-weight: bold; color: var(--primary-color);">${msg.author}</span>
+                <span style="font-size: 0.75rem; color: #888;">${dateStr}</span>
+              </div>
+              <div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap; line-height: 1.4;">${msg.content}</div>
+            </div>
+          `;
+        });
+      } catch (err) {
+        console.log("載入留言失敗:", err.message);
+        if (err.message.includes('relation "public.messages" does not exist')) {
+            document.getElementById('msg-list').innerHTML = '<div class="empty-state" style="color:red;">請先在 Supabase 執行 SQL 建立留言板資料表！</div>';
+        }
+      }
+    }
+
+    async function submitMessage(event) {
+      event.preventDefault();
+      if (!supabaseClient) return alert("無法連線至資料庫！");
+      
+      const author = document.getElementById('msg-author').value.trim();
+      const content = document.getElementById('msg-content').value.trim();
+      if (!author || !content) return;
+      
+      const btn = document.getElementById('msg-submit-btn');
+      btn.disabled = true;
+      btn.innerText = "傳送中...";
+      
+      try {
+        const { error } = await supabaseClient.from('messages').insert([{ author, content }]);
+        if (error) throw error;
+        
+        document.getElementById('msg-content').value = '';
+        await loadMessages();
+      } catch (err) {
+        alert("留言失敗：" + err.message + "\n請確認您是否已經在 Supabase 執行了建立留言板的 SQL 語法。");
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "🚀 送出留言";
+      }
+    }
+
   </script>
 </body>
 </html>
