@@ -541,6 +541,22 @@
         </form>
       </div>
 
+      <div id="msg-tab" class="panel panel-content">
+        <form id="msg-form" onsubmit="submitMessage(event)" style="margin-bottom: 20px; padding: 15px; background: rgba(200, 159, 83, 0.05); border-radius: 8px; border: 1px solid rgba(200, 159, 83, 0.3);">
+          <div style="font-weight: bold; color: var(--primary-color); margin-bottom: 10px;">我要留言</div>
+          <div class="form-group" style="margin-bottom: 10px;">
+            <input type="text" id="msg-author" class="form-control" placeholder="您的稱呼 (必填)" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 10px;">
+            <textarea id="msg-content" class="form-control" rows="3" placeholder="想對大家說的話... (必填)" required></textarea>
+          </div>
+          <button type="submit" id="msg-submit-btn" class="btn btn-primary" style="width: 100%;">🚀 送出留言</button>
+        </form>
+        <div id="msg-list" style="display: flex; flex-direction: column; gap: 12px;">
+          <!-- 留言列表會在這裡載入 -->
+        </div>
+      </div>
+
     </div>
   </div>
 
