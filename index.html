@@ -1260,7 +1260,10 @@
             <div style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); border-left: 3px solid var(--accent-color);">
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
                 <span style="font-weight: bold; color: var(--primary-color);">${msg.author}</span>
-                <span style="font-size: 0.75rem; color: #888;">${dateStr}</span>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <span style="font-size: 0.75rem; color: #888;">${dateStr}</span>
+                  <button onclick="deleteMessage('${msg.id}')" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#db4437;" title="刪除留言">🗑️</button>
+                </div>
               </div>
               <div style="color: var(--text-main); font-size: 0.95rem; white-space: pre-wrap; line-height: 1.4;">${msg.content}</div>
             </div>
@@ -1298,6 +1301,29 @@
         btn.disabled = false;
         btn.innerText = "🚀 送出留言";
       }
+
+
+    async function deleteMessage(msgId) {
+      const pwd = prompt("請輸入刪除密碼：");
+      if (pwd === null) return; // User cancelled
+      if (pwd !== "8888") {
+        alert("密碼錯誤，無法刪除留言！");
+        return;
+      }
+      if (!confirm("確定要刪除這筆留言嗎？")) return;
+
+      if (!supabaseClient) return alert("無法連線至資料庫！");
+
+      try {
+        const { error } = await supabaseClient.from('messages').delete().eq('id', msgId);
+        if (error) throw error;
+        
+        alert("留言已成功刪除！");
+        await loadMessages();
+      } catch (err) {
+        alert("刪除失敗：" + err.message + "\n請確認您是否已經在 Supabase 執行了允許刪除留言的 SQL 語法。");
+      }
+    }
     }
 
   </script>
