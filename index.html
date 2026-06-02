@@ -1301,7 +1301,7 @@
         btn.disabled = false;
         btn.innerText = "🚀 送出留言";
       }
-
+    }
 
     async function deleteMessage(msgId) {
       const pwd = prompt("請輸入刪除密碼：");
@@ -1323,7 +1323,6 @@
       } catch (err) {
         alert("刪除失敗：" + err.message + "\n請確認您是否已經在 Supabase 執行了允許刪除留言的 SQL 語法。");
       }
-    }
     }
 
   </script>
