@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Version: v1.2.1 | Date: 2026-06-02 | Fix message delete scoping issue and add version tracking -->
+<!-- Version: v1.3.0 | Date: 2026-06-04 | Add multi-photo fullscreen swipe and arrow slider support -->
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
@@ -449,7 +449,7 @@
       <button onclick="exportData()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:var(--accent-color); color:white;">📥 備份資料</button>
       <div class="subtitle" style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
         <div>永久免費雲端版</div>
-        <div style="font-size:0.75rem; opacity:0.85; color:var(--accent-color);">v1.2.1 (2026-06-02)</div>
+        <div style="font-size:0.75rem; opacity:0.85; color:var(--accent-color);">v1.3.0 (2026-06-04)</div>
       </div>
     </div>
   </header>
@@ -990,8 +990,9 @@
         
         if (photos.length > 0) {
           popupHTML += `<div style="display:flex; gap:4px; overflow-x:auto; margin-bottom:8px; padding-bottom:4px;">`;
-          photos.forEach(url => {
-            popupHTML += `<img src="${url}" class="map-popup-img" style="width:80px; height:80px; flex-shrink:0; margin-bottom:0;" alt="墓地照" onclick="openFullscreenPhoto('${url}')">`;
+          photos.forEach((url, index) => {
+            const photosEscaped = JSON.stringify(photos).replace(/"/g, '&quot;');
+            popupHTML += `<img src="${url}" class="map-popup-img" style="width:80px; height:80px; flex-shrink:0; margin-bottom:0; cursor:pointer;" alt="墓地照" onclick="openFullscreenPhoto(${photosEscaped}, ${index})">`;
           });
           popupHTML += `</div>`;
         }
@@ -1043,7 +1044,8 @@
           }
         }
 
-        let photoHTML = photos.length > 0 ? `<img src="${photos[0]}" class="card-photo-thumb" alt="${loc.name}" style="align-self: flex-start;">` : '';
+        const photosEscaped = JSON.stringify(photos).replace(/"/g, '&quot;');
+        let photoHTML = photos.length > 0 ? `<img src="${photos[0]}" class="card-photo-thumb" alt="${loc.name}" style="align-self: flex-start; cursor:pointer;" onclick="event.stopPropagation(); openFullscreenPhoto(${photosEscaped}, 0)">` : '';
 
         card.innerHTML = `
           <div class="card-info" onclick="focusLocation('${loc.id}')" style="cursor:pointer;">
@@ -1200,31 +1202,220 @@
     }
 
 
-    function openFullscreenPhoto(src) {
+    function openFullscreenPhoto(photos, startIndex = 0) {
+      let photoList = [];
+      let currentIndex = 0;
+      if (typeof photos === 'string') {
+        photoList = [photos];
+        currentIndex = 0;
+      } else if (Array.isArray(photos)) {
+        photoList = photos;
+        currentIndex = startIndex;
+      }
+      
+      if (photoList.length === 0) return;
+
       const overlay = document.createElement('div');
       overlay.style.position = 'fixed';
       overlay.style.top = '0';
       overlay.style.left = '0';
       overlay.style.width = '100vw';
       overlay.style.height = '100dvh';
-      overlay.style.backgroundColor = 'rgba(0,0,0,0.9)';
+      overlay.style.backgroundColor = 'rgba(0,0,0,0.95)';
       overlay.style.zIndex = '9999';
       overlay.style.display = 'flex';
+      overlay.style.flexDirection = 'column';
       overlay.style.alignItems = 'center';
       overlay.style.justifyContent = 'center';
-      overlay.style.cursor = 'pointer';
+      overlay.style.userSelect = 'none';
+
+      const container = document.createElement('div');
+      container.style.position = 'relative';
+      container.style.width = '100%';
+      container.style.height = '80%';
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'center';
+      container.style.overflow = 'hidden';
+      overlay.appendChild(container);
 
       const img = document.createElement('img');
-      img.src = src;
       img.style.maxWidth = '95%';
       img.style.maxHeight = '95%';
       img.style.objectFit = 'contain';
       img.style.borderRadius = '8px';
-      img.style.border = '2px solid white';
+      img.style.border = '2px solid rgba(255, 255, 255, 0.8)';
+      img.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+      img.style.boxShadow = '0 10px 25px rgba(0,0,0,0.5)';
+      container.appendChild(img);
 
-      overlay.appendChild(img);
+      const closeBtn = document.createElement('div');
+      closeBtn.innerHTML = '✕';
+      closeBtn.style.position = 'absolute';
+      closeBtn.style.top = '20px';
+      closeBtn.style.right = '20px';
+      closeBtn.style.color = '#fff';
+      closeBtn.style.fontSize = '30px';
+      closeBtn.style.fontWeight = 'bold';
+      closeBtn.style.cursor = 'pointer';
+      closeBtn.style.zIndex = '10001';
+      closeBtn.style.width = '44px';
+      closeBtn.style.height = '44px';
+      closeBtn.style.display = 'flex';
+      closeBtn.style.alignItems = 'center';
+      closeBtn.style.justifyContent = 'center';
+      closeBtn.style.borderRadius = '50%';
+      closeBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+      overlay.appendChild(closeBtn);
+
+      let prevBtn, nextBtn;
+      if (photoList.length > 1) {
+        prevBtn = document.createElement('div');
+        prevBtn.innerHTML = '&#10094;';
+        prevBtn.style.position = 'absolute';
+        prevBtn.style.left = '20px';
+        prevBtn.style.color = '#fff';
+        prevBtn.style.fontSize = '36px';
+        prevBtn.style.cursor = 'pointer';
+        prevBtn.style.zIndex = '10001';
+        prevBtn.style.width = '50px';
+        prevBtn.style.height = '50px';
+        prevBtn.style.display = 'flex';
+        prevBtn.style.alignItems = 'center';
+        prevBtn.style.justifyContent = 'center';
+        prevBtn.style.borderRadius = '50%';
+        prevBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+        prevBtn.style.transition = 'background-color 0.2s';
+        prevBtn.onmouseenter = () => prevBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        prevBtn.onmouseleave = () => prevBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+        overlay.appendChild(prevBtn);
+
+        nextBtn = document.createElement('div');
+        nextBtn.innerHTML = '&#10095;';
+        nextBtn.style.position = 'absolute';
+        nextBtn.style.right = '20px';
+        nextBtn.style.color = '#fff';
+        nextBtn.style.fontSize = '36px';
+        nextBtn.style.cursor = 'pointer';
+        nextBtn.style.zIndex = '10001';
+        nextBtn.style.width = '50px';
+        nextBtn.style.height = '50px';
+        nextBtn.style.display = 'flex';
+        nextBtn.style.alignItems = 'center';
+        nextBtn.style.justifyContent = 'center';
+        nextBtn.style.borderRadius = '50%';
+        nextBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+        nextBtn.style.transition = 'background-color 0.2s';
+        nextBtn.onmouseenter = () => nextBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        nextBtn.onmouseleave = () => nextBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+        overlay.appendChild(nextBtn);
+      }
+
+      const dotsContainer = document.createElement('div');
+      dotsContainer.style.display = 'flex';
+      dotsContainer.style.gap = '8px';
+      dotsContainer.style.position = 'absolute';
+      dotsContainer.style.bottom = '30px';
+      dotsContainer.style.zIndex = '10001';
+      overlay.appendChild(dotsContainer);
+
+      const dots = [];
+      if (photoList.length > 1) {
+        for (let i = 0; i < photoList.length; i++) {
+          const dot = document.createElement('div');
+          dot.style.width = '10px';
+          dot.style.height = '10px';
+          dot.style.borderRadius = '50%';
+          dot.style.backgroundColor = i === currentIndex ? '#fff' : 'rgba(255,255,255,0.4)';
+          dot.style.cursor = 'pointer';
+          dot.onclick = (e) => {
+            e.stopPropagation();
+            showPhoto(i);
+          };
+          dotsContainer.appendChild(dot);
+          dots.push(dot);
+        }
+      }
+
+      function showPhoto(index) {
+        if (index < 0 || index >= photoList.length) return;
+        currentIndex = index;
+        img.style.opacity = '0';
+        setTimeout(() => {
+          img.src = photoList[currentIndex];
+          img.style.opacity = '1';
+        }, 150);
+
+        dots.forEach((dot, i) => {
+          dot.style.backgroundColor = i === currentIndex ? '#fff' : 'rgba(255,255,255,0.4)';
+        });
+      }
+
+      img.src = photoList[currentIndex];
+
+      function nextPhoto() {
+        if (currentIndex < photoList.length - 1) {
+          showPhoto(currentIndex + 1);
+        } else {
+          showPhoto(0);
+        }
+      }
+
+      function prevPhoto() {
+        if (currentIndex > 0) {
+          showPhoto(currentIndex - 1);
+        } else {
+          showPhoto(photoList.length - 1);
+        }
+      }
+
+      if (prevBtn) prevBtn.onclick = (e) => { e.stopPropagation(); prevPhoto(); };
+      if (nextBtn) nextBtn.onclick = (e) => { e.stopPropagation(); nextPhoto(); };
+
+      let startX = 0;
+      let endX = 0;
+      container.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+      }, { passive: true });
+
+      container.addEventListener('touchmove', (e) => {
+        endX = e.touches[0].clientX;
+      }, { passive: true });
+
+      container.addEventListener('touchend', () => {
+        const threshold = 50;
+        if (startX - endX > threshold) {
+          nextPhoto();
+        } else if (endX - startX > threshold) {
+          prevPhoto();
+        }
+      });
+
+      const keyHandler = (e) => {
+        if (e.key === 'ArrowRight') nextPhoto();
+        else if (e.key === 'ArrowLeft') prevPhoto();
+        else if (e.key === 'Escape') closeOverlay();
+      };
+      document.addEventListener('keydown', keyHandler);
+
+      function closeOverlay() {
+        document.removeEventListener('keydown', keyHandler);
+        if (overlay.parentNode) {
+          document.body.removeChild(overlay);
+        }
+      }
+
+      closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        closeOverlay();
+      };
+      overlay.onclick = (e) => {
+        if (e.target === overlay || e.target === container) {
+          closeOverlay();
+        }
+      };
+
       document.body.appendChild(overlay);
-      overlay.onclick = () => document.body.removeChild(overlay);
     }
 
     window.onload = async () => {
