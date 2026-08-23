@@ -465,6 +465,21 @@
       </div>
 
       <div id="list-tab" class="panel panel-content active">
+        <!-- 🔥 年度掃墓進度卡片 -->
+        <div class="year-progress-card" style="background: white; border-radius: var(--border-radius); padding: 14px; margin-bottom: 12px; border: 1px solid rgba(79, 111, 82, 0.15); box-shadow: var(--shadow-sm);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-weight:700; color:var(--primary-color); display:flex; align-items:center; gap:6px; font-size:0.95rem;">
+              <span>🧹 掃墓年度：</span>
+              <select id="year-select" onchange="changeSelectedYear(this.value)" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(79,111,82,0.3); font-size:0.9rem; font-weight:bold; color:var(--primary-color); background:#f7f9f6; cursor:pointer;">
+              </select>
+            </div>
+            <span id="progress-text" style="font-size:0.85rem; font-weight:bold; color:var(--secondary-color);">0/0 (0%)</span>
+          </div>
+          <div style="width:100%; background:#e0e0e0; height:8px; border-radius:4px; overflow:hidden;">
+            <div id="progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #4caf50, #2e7d32); transition:width 0.4s ease;"></div>
+          </div>
+        </div>
+
         <div class="search-box">
           <span class="search-icon">🔍</span>
           <input type="text" id="search-input" class="search-input" placeholder="輸入墓地名稱或祖先姓名搜尋..." oninput="filterLocations()">
@@ -619,6 +634,101 @@
     let markersGroup;
     let tempMarker = null;
     let allLocations = [];
+    let currentSelectedYear = new Date().getFullYear().toString();
+
+    function initYearSelect() {
+      const select = document.getElementById('year-select');
+      if (!select) return;
+      select.innerHTML = '';
+      const thisYear = new Date().getFullYear();
+      for (let y = thisYear + 1; y >= thisYear - 3; y--) {
+        const opt = document.createElement('option');
+        opt.value = y.toString();
+        opt.innerText = `${y} 年`;
+        if (y.toString() === currentSelectedYear) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+
+    function changeSelectedYear(year) {
+      currentSelectedYear = year;
+      renderLocationList(allLocations);
+      renderMapMarkers(allLocations);
+      updateProgressBar();
+    }
+
+    function isSwept(loc, year) {
+      if (!loc || !loc.swept_years) return false;
+      let sy = loc.swept_years;
+      if (typeof sy === 'string') {
+        try { sy = JSON.parse(sy); } catch(e) { return false; }
+      }
+      return !!(sy[year] && sy[year].swept);
+    }
+
+    function getSweptInfo(loc, year) {
+      if (!isSwept(loc, year)) return null;
+      let sy = loc.swept_years;
+      if (typeof sy === 'string') {
+        try { sy = JSON.parse(sy); } catch(e) { return null; }
+      }
+      return sy[year] || {};
+    }
+
+    function updateProgressBar() {
+      const total = allLocations.length;
+      const textElem = document.getElementById('progress-text');
+      const barElem = document.getElementById('progress-bar');
+      if (!textElem || !barElem) return;
+
+      if (total === 0) {
+        textElem.innerText = '0/0 (0%)';
+        barElem.style.width = '0%';
+        return;
+      }
+      const sweptCount = allLocations.filter(loc => isSwept(loc, currentSelectedYear)).length;
+      const percent = Math.round((sweptCount / total) * 100);
+      textElem.innerText = `${sweptCount}/${total} 處已掃 (${percent}%)`;
+      barElem.style.width = `${percent}%`;
+    }
+
+    async function toggleSweptStatus(id) {
+      const loc = allLocations.find(l => l.id === id);
+      if (!loc) return;
+
+      const currentlySwept = isSwept(loc, currentSelectedYear);
+      let sy = loc.swept_years || {};
+      if (typeof sy === 'string') {
+        try { sy = JSON.parse(sy); } catch(e) { sy = {}; }
+      } else {
+        sy = { ...sy };
+      }
+
+      if (!currentlySwept) {
+        const name = prompt(`標記【${loc.name}】在 ${currentSelectedYear} 年已完成掃墓！\n請輸入您的稱呼 (選填，如：大堂哥小明)：`, loc.recorder || '');
+        if (name === null) return;
+
+        sy[currentSelectedYear] = {
+          swept: true,
+          sweptBy: name.trim() || '家族成員',
+          sweptAt: new Date().toLocaleDateString('zh-TW')
+        };
+      } else {
+        if (!confirm(`確定要取消【${loc.name}】在 ${currentSelectedYear} 年的已掃墓標記嗎？`)) return;
+        sy[currentSelectedYear] = { swept: false };
+      }
+
+      try {
+        const { updateDoc, doc } = fb();
+        await updateDoc(doc(getDB(), 'locations', id), { swept_years: sy });
+        loc.swept_years = sy;
+        renderLocationList(allLocations);
+        renderMapMarkers(allLocations);
+        updateProgressBar();
+      } catch(err) {
+        alert("更新標記失敗：" + err.message);
+      }
+    }
 
     function exportData() {
       if (!allLocations || allLocations.length === 0) {
@@ -993,8 +1103,10 @@
         const q = query(collection(getDB(), 'locations'), orderBy('created_at', 'desc'));
         const snapshot = await getDocs(q);
         allLocations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        initYearSelect();
         renderLocationList(allLocations);
         renderMapMarkers(allLocations);
+        updateProgressBar();
       } catch (error) {
         console.error('載入資料失敗:', error);
         document.getElementById('location-list').innerHTML = `
@@ -1009,11 +1121,19 @@
     function renderMapMarkers(locations) {
       markersGroup.clearLayers();
       locations.forEach(loc => {
+        const swept = isSwept(loc, currentSelectedYear);
+        const sweptInfo = getSweptInfo(loc, currentSelectedYear);
+
+        // 綠色: 已掃, 紅/金色: 未掃
+        const bgColor = swept ? '#2e7d32' : 'var(--primary-color)';
+        const borderColor = swept ? '#81c784' : 'var(--accent-color)';
+        const innerIcon = swept ? '✓' : '';
+
         const customIcon = L.divIcon({
-          html: `<div style="background-color: var(--primary-color); border: 2px solid var(--accent-color); width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><div style="background-color: white; width: 10px; height: 10px; border-radius: 50%;"></div></div>`,
-          iconSize: [26, 26],
-          iconAnchor: [13, 26],
-          popupAnchor: [0, -26],
+          html: `<div style="background-color: ${bgColor}; border: 2px solid ${borderColor}; width: 28px; height: 28px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 6px rgba(0,0,0,0.3);"><div style="color: white; font-weight: bold; font-size: 14px; transform: rotate(45deg); margin-top:-2px;">${innerIcon}</div></div>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 28],
+          popupAnchor: [0, -28],
           className: 'custom-map-pin'
         });
 
@@ -1034,6 +1154,22 @@
         `;
         
         if (loc.ancestor) popupHTML += `<span class="map-popup-badge">供奉: ${loc.ancestor}</span>`;
+
+        // 掃墓狀態標籤與動作按鈕
+        if (swept) {
+          popupHTML += `
+            <div style="background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; padding:5px 8px; border-radius:6px; font-size:0.8rem; font-weight:bold; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+              <span>✅ ${currentSelectedYear} 已掃 (${sweptInfo.sweptBy || '完成'})</span>
+              <button onclick="toggleSweptStatus('${loc.id}')" style="background:none; border:none; color:#c62828; font-size:0.75rem; cursor:pointer; text-decoration:underline; font-weight:bold;">取消</button>
+            </div>
+          `;
+        } else {
+          popupHTML += `
+            <button onclick="toggleSweptStatus('${loc.id}')" style="width:100%; padding:6px; background-color:#2e7d32; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:0.8rem; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:4px;">
+              🧹 標記 ${currentSelectedYear} 已掃墓
+            </button>
+          `;
+        }
         
         if (photos.length > 0) {
           popupHTML += `<div style="display:flex; gap:4px; overflow-x:auto; margin-bottom:8px; padding-bottom:4px;">`;
@@ -1078,9 +1214,16 @@
       }
 
       locations.forEach(loc => {
+        const swept = isSwept(loc, currentSelectedYear);
+        const sweptInfo = getSweptInfo(loc, currentSelectedYear);
+
         const card = document.createElement('div');
         card.className = 'location-card';
         card.id = `card-${loc.id}`;
+        if (swept) {
+          card.style.borderLeft = '5px solid #2e7d32';
+          card.style.backgroundColor = 'rgba(46, 125, 50, 0.04)';
+        }
         
         let photos = [];
         if (loc.photo_url) {
@@ -1094,15 +1237,27 @@
         const photosEscaped = JSON.stringify(photos).replace(/"/g, '&quot;');
         let photoHTML = photos.length > 0 ? `<img src="${photos[0]}" class="card-photo-thumb" alt="${loc.name}" style="align-self: flex-start; cursor:pointer;" onclick="event.stopPropagation(); openFullscreenPhoto(${photosEscaped}, 0)">` : '';
 
+        let statusBadge = swept 
+          ? `<span class="card-badge" style="background-color:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">✅ ${currentSelectedYear} 已掃 (${sweptInfo.sweptBy || '已完成'})</span>`
+          : `<span class="card-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffe0b2;">⭕ ${currentSelectedYear} 尚未掃</span>`;
+
+        let toggleBtnHTML = swept
+          ? `<button onclick="event.stopPropagation(); toggleSweptStatus('${loc.id}')" style="padding:4px 10px; background-color:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">✅ 已掃 (點擊取消)</button>`
+          : `<button onclick="event.stopPropagation(); toggleSweptStatus('${loc.id}')" style="padding:4px 10px; background-color:#2e7d32; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">🧹 標記 ${currentSelectedYear} 已掃墓</button>`;
+
         card.innerHTML = `
           <div class="card-info" onclick="focusLocation('${loc.id}')" style="cursor:pointer;">
             <div class="card-title">${loc.name}</div>
-            ${loc.ancestor ? `<span class="card-badge">祖先: ${loc.ancestor}</span>` : ''}
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;">
+              ${loc.ancestor ? `<span class="card-badge">祖先: ${loc.ancestor}</span>` : ''}
+              ${statusBadge}
+            </div>
             <div class="card-description" style="font-size:0.85rem; color:#53685e; margin-top:4px;">${loc.description || '無描述。'}</div>
             <div class="card-meta">
               <span>👤 記錄人: ${loc.recorder}</span>
             </div>
-            <div style="margin-top:6px;">
+            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+              ${toggleBtnHTML}
               <button onclick="event.stopPropagation(); editLocation('${loc.id}')" style="padding:4px 10px; background-color:var(--secondary-color); color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">✏️ 編輯</button>
             </div>
           </div>
