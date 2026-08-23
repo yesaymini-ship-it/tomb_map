@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Version: v1.3.0 | Date: 2026-06-04 | Add multi-photo fullscreen swipe and arrow slider support -->
+<!-- Version: v1.4.0 | Date: 2026-08-23 | Migrate from Supabase to Firebase (永不暫停) -->
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
@@ -449,7 +449,7 @@
       <button onclick="exportData()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:var(--accent-color); color:white;">📥 備份資料</button>
       <div class="subtitle" style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
         <div>永久免費雲端版</div>
-        <div style="font-size:0.75rem; opacity:0.85; color:var(--accent-color);">v1.3.0 (2026-06-04)</div>
+        <div style="font-size:0.75rem; opacity:0.85; color:var(--accent-color);">v1.4.0 (2026-08-23)</div>
       </div>
     </div>
   </header>
@@ -568,27 +568,52 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  
-  <!-- Supabase CDN (用於直接連線雲端資料庫) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Firebase SDK (模組化，永不暫停的免費資料庫) -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import {
+      getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    // 📸 imgbb API Key (免費圖片儲存，永不暫停)
+    const IMGBB_API_KEY = '550d34713c2e780a52a38ed8b98cc27b';
+    window._IMGBB_API_KEY = IMGBB_API_KEY;
+
+    // ==========================================
+    // Firebase 專案設定 (tomb-map-tw)
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDlobJqUGep8aFaupPzymagp4e9JoPtUyQ",
+      authDomain: "tomb-map-tw.firebaseapp.com",
+      projectId: "tomb-map-tw",
+      storageBucket: "tomb-map-tw.firebasestorage.app",
+      messagingSenderId: "793718439076",
+      appId: "1:793718439076:web:8a7d617720d8758f62ba31"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 掛載到 window 讓其他函式存取
+    window._db = db;
+    window._fbModules = {
+      collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp
+    };
+
+    // Firebase 初始化完成，開始載入資料
+    window.addEventListener('DOMContentLoaded', async () => {
+      initMap();
+      await loadLocations();
+      // 初始化拖曳排序
+      new Sortable(document.getElementById('img-preview-container'), {
+        animation: 150,
+        ghostClass: 'sortable-ghost'
+      });
+    });
+  </script>
 
   <script>
-    // ==========================================
-    // ⚠️ 請填入您的 Supabase 連線資訊 (註冊後取得)
-    // ==========================================
-    const SUPABASE_URL = 'https://kudfufxgvnewyhahpxkn.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_ANgFMxIy_wLOIawNqmfqOQ_OgtETx0i';
-    
-    let supabaseClient;
-    if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
-      if (window.supabase) {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } else {
-        console.error("無法載入 Supabase SDK！請確認您的網路連線是否正常，或是否啟用了廣告阻擋器阻擋了 jsDelivr CDN。");
-      }
-    } else {
-      alert("請先在 index_supabase.html 的程式碼第 471 行填入您的 Supabase URL 與 Anon Key！");
-    }
 
     let map;
     let markersGroup;
@@ -610,6 +635,30 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    }
+
+    // Firebase 模組取用輔助
+    function getDB() { return window._db; }
+    function fb() { return window._fbModules; }
+
+    // 📸 上傳單張照片到 imgbb，回傳公開 URL
+    async function uploadToImgbb(file) {
+      const reader = new FileReader();
+      return new Promise((resolve, reject) => {
+        reader.onload = async (e) => {
+          try {
+            const base64 = e.target.result.split(',')[1];
+            const form = new FormData();
+            form.append('key', window._IMGBB_API_KEY);
+            form.append('image', base64);
+            const res = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error?.message || '上傳失敗');
+            resolve(data.data.url);
+          } catch (err) { reject(err); }
+        };
+        reader.readAsDataURL(file);
+      });
     }
 
 
@@ -894,15 +943,14 @@
       btn.disabled = true;
 
       try {
-        const { error } = await supabaseClient.from('locations').delete().eq('id', editingId);
-        if (error) throw error;
-        
+        const { deleteDoc, doc } = fb();
+        await deleteDoc(doc(getDB(), 'locations', editingId));
         alert("已成功刪除！");
         cancelEdit();
         await loadLocations();
         switchTab('list-tab');
       } catch (err) {
-        alert("刪除失敗：" + err.message + "\n\n請確定您已經在 Supabase 設定了刪除權限 (Delete Policy)！");
+        alert("刪除失敗：" + err.message);
       } finally {
         btn.innerText = originalText;
         btn.disabled = false;
@@ -934,25 +982,21 @@
 
 
 
-    // 🎯 [Supabase 串接]：從雲端資料庫讀取所有墓地
+    // 🔥 [Firebase 串接]：從 Firestore 讀取所有墓地
     async function loadLocations() {
-      if (!supabaseClient) return;
+      if (!getDB()) return;
       try {
-        const { data, error } = await supabaseClient
-          .from('locations')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        
-        allLocations = data || [];
+        const { collection, getDocs, query, orderBy } = fb();
+        const q = query(collection(getDB(), 'locations'), orderBy('created_at', 'desc'));
+        const snapshot = await getDocs(q);
+        allLocations = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         renderLocationList(allLocations);
         renderMapMarkers(allLocations);
       } catch (error) {
         console.error('載入資料失敗:', error);
         document.getElementById('location-list').innerHTML = `
           <div class="empty-state">
-            <p>連線 Supabase 失敗，請確認 API 金鑰與 Table 設定是否正確。<br>錯誤資訊：${error.message}</p>
+            <p>連線 Firebase 失敗。<br>錯誤資訊：${error.message}</p>
           </div>
         `;
       }
@@ -1101,12 +1145,12 @@
       renderLocationList(filtered);
     }
 
-    // 🎯 [Supabase 串接]：上傳照片與儲存資料到雲端
+    // 🔥 [Firebase 串接]：上傳照片與儲存資料到 Firestore
     
     async function submitForm(event) {
       event.preventDefault();
-      if (!supabaseClient) {
-        alert("尚未填入您的 Supabase 設定，無法儲存！");
+      if (!getDB()) {
+        alert("Firebase 尚未初始化，請稍後再試！");
         return;
       }
       
@@ -1131,31 +1175,23 @@
       submitBtn.innerText = "⏳ 正在處理中...";
 
       try {
+        const { addDoc, updateDoc, doc, collection, serverTimestamp } = fb();
         let finalPhotoUrls = [];
 
+        // 📸 上傳新照片到 imgbb
         if (selectedFiles.length > 0) {
-          for (let file of selectedFiles) {
-            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.jpg`;
-            const { data: uploadData, error: uploadError } = await supabaseClient.storage
-              .from('photos')
-              .upload(fileName, file);
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabaseClient.storage
-              .from('photos')
-              .getPublicUrl(fileName);
-              
+          submitBtn.innerText = `⏳ 上傳照片中 (0/${selectedFiles.length})...`;
+          for (let i = 0; i < selectedFiles.length; i++) {
+            submitBtn.innerText = `⏳ 上傳照片中 (${i+1}/${selectedFiles.length})...`;
+            const publicUrl = await uploadToImgbb(selectedFiles[i]);
             finalPhotoUrls.push(publicUrl);
           }
         }
 
-        
-        
+        // 依照預覽容器順序組合所有照片 URL
         let allUrls = [];
         const container = document.getElementById('img-preview-container');
         let newUploadIndex = 0;
-        
         for (let child of container.children) {
           if (child.dataset.type === 'existing') {
             allUrls.push(child.dataset.url);
@@ -1164,9 +1200,6 @@
             newUploadIndex++;
           }
         }
-        
-        let photoUrlsStr = allUrls.length > 0 ? JSON.stringify(allUrls) : null;
-
 
         const payload = {
           name: name.trim(),
@@ -1175,17 +1208,18 @@
           recorder: recorder ? recorder.trim() : '匿名家族成員',
           lat: lat,
           lng: lng,
-          photo_url: photoUrlsStr
+          photo_url: allUrls.length > 0 ? JSON.stringify(allUrls) : null,
+          created_at: serverTimestamp()
         };
 
-
         if (editingId) {
-          const { error } = await supabaseClient.from('locations').update(payload).eq('id', editingId);
-          if (error) throw error;
+          // 更新時不覆蓋 created_at
+          const updatePayload = { ...payload };
+          delete updatePayload.created_at;
+          await updateDoc(doc(getDB(), 'locations', editingId), updatePayload);
           alert(`成功修改墓地記錄：${name}！`);
         } else {
-          const { error } = await supabaseClient.from('locations').insert([payload]);
-          if (error) throw error;
+          await addDoc(collection(getDB(), 'locations'), payload);
           alert(`成功新增墓地記錄：${name}！`);
         }
 
@@ -1418,39 +1452,26 @@
       document.body.appendChild(overlay);
     }
 
-    window.onload = async () => {
-      initMap();
-      if (supabaseClient) {
-        await loadLocations();
-      }
-    
-      // 初始化拖曳排序
-      new Sortable(document.getElementById('img-preview-container'), {
-        animation: 150,
-        ghostClass: 'sortable-ghost'
-      });
-    };
+    // window.onload 由 Firebase module script 的 DOMContentLoaded 事件接管，此處留空避免重複執行
   
     async function loadMessages() {
-      if (!supabaseClient) return;
+      if (!getDB()) return;
       try {
-        const { data, error } = await supabaseClient
-          .from('messages')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) throw error;
+        const { collection, getDocs, query, orderBy } = fb();
+        const q = query(collection(getDB(), 'messages'), orderBy('created_at', 'desc'));
+        const snapshot = await getDocs(q);
         
         const container = document.getElementById('msg-list');
         container.innerHTML = '';
         
-        if (!data || data.length === 0) {
+        if (snapshot.empty) {
           container.innerHTML = '<div class="empty-state">目前還沒有留言喔！來搶頭香吧！</div>';
           return;
         }
         
-        data.forEach(msg => {
-          const dateStr = new Date(msg.created_at).toLocaleString('zh-TW');
+        snapshot.docs.forEach(d => {
+          const msg = { id: d.id, ...d.data() };
+          const dateStr = msg.created_at?.toDate ? msg.created_at.toDate().toLocaleString('zh-TW') : '剛剛';
           container.innerHTML += `
             <div style="background: white; border-radius: 8px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); border-left: 3px solid var(--accent-color);">
               <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
@@ -1466,15 +1487,13 @@
         });
       } catch (err) {
         console.log("載入留言失敗:", err.message);
-        if (err.message.includes('relation "public.messages" does not exist')) {
-            document.getElementById('msg-list').innerHTML = '<div class="empty-state" style="color:red;">請先在 Supabase 執行 SQL 建立留言板資料表！</div>';
-        }
+        document.getElementById('msg-list').innerHTML = `<div class="empty-state" style="color:red;">載入留言失敗：${err.message}</div>`;
       }
     }
 
     async function submitMessage(event) {
       event.preventDefault();
-      if (!supabaseClient) return alert("無法連線至資料庫！");
+      if (!getDB()) return alert("Firebase 尚未初始化！");
       
       const author = document.getElementById('msg-author').value.trim();
       const content = document.getElementById('msg-content').value.trim();
@@ -1485,13 +1504,12 @@
       btn.innerText = "傳送中...";
       
       try {
-        const { error } = await supabaseClient.from('messages').insert([{ author, content }]);
-        if (error) throw error;
-        
+        const { collection, addDoc, serverTimestamp } = fb();
+        await addDoc(collection(getDB(), 'messages'), { author, content, created_at: serverTimestamp() });
         document.getElementById('msg-content').value = '';
         await loadMessages();
       } catch (err) {
-        alert("留言失敗：" + err.message + "\n請確認您是否已經在 Supabase 執行了建立留言板的 SQL 語法。");
+        alert("留言失敗：" + err.message);
       } finally {
         btn.disabled = false;
         btn.innerText = "🚀 送出留言";
@@ -1500,23 +1518,22 @@
 
     async function deleteMessage(msgId) {
       const pwd = prompt("請輸入刪除密碼：");
-      if (pwd === null) return; // User cancelled
+      if (pwd === null) return;
       if (pwd !== "8888") {
         alert("密碼錯誤，無法刪除留言！");
         return;
       }
       if (!confirm("確定要刪除這筆留言嗎？")) return;
 
-      if (!supabaseClient) return alert("無法連線至資料庫！");
+      if (!getDB()) return alert("Firebase 尚未初始化！");
 
       try {
-        const { error } = await supabaseClient.from('messages').delete().eq('id', msgId);
-        if (error) throw error;
-        
+        const { deleteDoc, doc } = fb();
+        await deleteDoc(doc(getDB(), 'messages', msgId));
         alert("留言已成功刪除！");
         await loadMessages();
       } catch (err) {
-        alert("刪除失敗：" + err.message + "\n請確認您是否已經在 Supabase 執行了允許刪除留言的 SQL 語法。");
+        alert("刪除失敗：" + err.message);
       }
     }
 

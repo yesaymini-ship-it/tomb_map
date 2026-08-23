@@ -30,5 +30,9 @@ screenshot.png
 # 舊版備份
 index.html.txt
 
-# 本機 JSON 資料庫（資料已在 Supabase 雲端）
+# 本機 JSON 資料庫（資料已在 Firebase 雲端）
 locations.json
+
+# Firebase 偵錯記錄
+firebase-debug.log
+.firebaserc
