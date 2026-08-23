@@ -446,6 +446,7 @@
   <header>
     <h1><span class="logo-emoji">🌿</span>清明尋陵 <span style="font-weight:300; font-size:1rem;">| 掃墓地圖協作系統 (雲端版)</span></h1>
     <div style="display:flex; align-items:center; gap:10px;">
+      <button id="map-toggle-btn" onclick="toggleMapManual()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:1px solid rgba(255,255,255,0.4); border-radius:6px; cursor:pointer; background:rgba(255,255,255,0.2); color:white;">🗺️ 隱藏地圖</button>
       <button onclick="exportData()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:var(--accent-color); color:white;">📥 備份資料</button>
       <div class="subtitle" style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
         <div>永久免費雲端版</div>
@@ -635,6 +636,8 @@
     let tempMarker = null;
     let allLocations = [];
     let currentSelectedYear = "2027";
+    let isMapVisible = true;
+    let currentTab = 'list-tab';
 
     function initYearSelect() {
       const select = document.getElementById('year-select');
@@ -846,6 +849,7 @@
 
     
     function switchTab(tabId) {
+      currentTab = tabId;
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
       const tabs = ['list-tab', 'add-tab', 'msg-tab'];
@@ -857,13 +861,50 @@
 
       if (tabId === 'msg-tab') {
         loadMessages();
+        // 💬 切換至留言板：自動隱藏地圖
+        setMapDisplay(false);
+      } else {
+        // 切換至尋找/新增：恢復原本的地圖顯示設定
+        setMapDisplay(isMapVisible);
       }
 
-      // 重新計算地圖大小，確保手機版切換分頁時地圖不會破圖或隱藏
+      // 重新計算地圖大小，確保切換時不破圖
       setTimeout(() => {
         if (map) {
           map.invalidateSize();
         }
+      }, 100);
+    }
+
+    function toggleMapManual() {
+      if (currentTab === 'msg-tab') {
+        // 若在留言板點擊，先自動切換回尋找墓地分頁
+        switchTab('list-tab');
+        isMapVisible = true;
+        setMapDisplay(true);
+        return;
+      }
+      isMapVisible = !isMapVisible;
+      setMapDisplay(isMapVisible);
+    }
+
+    function setMapDisplay(visible) {
+      const mapElem = document.getElementById('map');
+      const toggleBtn = document.getElementById('map-toggle-btn');
+      if (!mapElem || !toggleBtn) return;
+
+      if (visible) {
+        mapElem.style.display = 'block';
+        toggleBtn.innerText = '🗺️ 隱藏地圖';
+        toggleBtn.style.background = 'rgba(255,255,255,0.2)';
+      } else {
+        mapElem.style.display = 'none';
+        toggleBtn.innerText = '🗺️ 顯示地圖';
+        toggleBtn.style.background = 'var(--accent-color)';
+      }
+
+      setTimeout(() => {
+        if (map) map.invalidateSize();
       }, 100);
     }
 
