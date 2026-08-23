@@ -1152,9 +1152,6 @@
     
     async function submitForm(event) {
       event.preventDefault();
-      const pwd = prompt("🔒 請輸入管理密碼：");
-      if (pwd === null) return;
-      if (pwd !== "8888") { alert("密碼錯誤！"); return; }
       if (!getDB()) {
         alert("Firebase 尚未初始化，請稍後再試！");
         return;
