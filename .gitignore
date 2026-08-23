@@ -1,0 +1,34 @@
+# 系統檔案
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+package-lock.json
+
+# 本機伺服器相關（已改為 Supabase 雲端版，不需上傳）
+server.js
+package.json
+start_tunnel.sh
+uploads/
+
+# 開發測試腳本（不需上傳）
+check_page.js
+check_page2.js
+check_page3.js
+check_page4.js
+check_page_edit.js
+test_html.js
+update_script.js
+update_script2.js
+update_script3.js
+update_script4.js
+update_script5.js
+update_script6.js
+screenshot.png
+
+# 舊版備份
+index.html.txt
+
+# 本機 JSON 資料庫（資料已在 Supabase 雲端）
+locations.json
