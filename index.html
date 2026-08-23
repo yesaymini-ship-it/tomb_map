@@ -634,20 +634,21 @@
     let markersGroup;
     let tempMarker = null;
     let allLocations = [];
-    let currentSelectedYear = new Date().getFullYear().toString();
+    let currentSelectedYear = "2027";
 
     function initYearSelect() {
       const select = document.getElementById('year-select');
       if (!select) return;
       select.innerHTML = '';
-      const thisYear = new Date().getFullYear();
-      for (let y = thisYear + 1; y >= thisYear - 3; y--) {
+      const years = ["2027", "2028"];
+      if (!years.includes(currentSelectedYear)) currentSelectedYear = "2027";
+      years.forEach(y => {
         const opt = document.createElement('option');
-        opt.value = y.toString();
+        opt.value = y;
         opt.innerText = `${y} 年`;
-        if (y.toString() === currentSelectedYear) opt.selected = true;
+        if (y === currentSelectedYear) opt.selected = true;
         select.appendChild(opt);
-      }
+      });
     }
 
     function changeSelectedYear(year) {
