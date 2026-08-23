@@ -935,6 +935,9 @@
     
     async function deleteRecord() {
       if (!editingId) return;
+      const pwd = prompt("🔒 請輸入管理密碼：");
+      if (pwd === null) return;
+      if (pwd !== "8888") { alert("密碼錯誤！"); return; }
       if (!confirm("確定要永久刪除這筆墓地記錄嗎？這個操作無法復原。")) return;
       
       const btn = document.getElementById('delete-record-btn');
@@ -1149,6 +1152,9 @@
     
     async function submitForm(event) {
       event.preventDefault();
+      const pwd = prompt("🔒 請輸入管理密碼：");
+      if (pwd === null) return;
+      if (pwd !== "8888") { alert("密碼錯誤！"); return; }
       if (!getDB()) {
         alert("Firebase 尚未初始化，請稍後再試！");
         return;
