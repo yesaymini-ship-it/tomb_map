@@ -541,7 +541,7 @@
               <input type="file" id="photo" name="photo" class="file-upload-input" accept="image/*" multiple onchange="previewImages(event)">
               <div class="upload-placeholder" id="upload-placeholder">
                 <span class="icon">📸</span>
-                <span>點此拍現場照片或從相簿選擇 (最多10張)</span>
+                <span>點此拍現場照片或從相簿選擇 (無張數限制)</span>
               </div>
               <div id="img-preview-container" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; position:relative; z-index:2;"></div>
             </div>
@@ -966,16 +966,10 @@
       const placeholder = document.getElementById('upload-placeholder');
       
       if (!input.files || input.files.length === 0) return;
-      
-      if (input.files.length + selectedFiles.length + existingPhotoUrls.length > 10) {
-        alert("總照片數最多只能 10 張！");
-        return;
-      }
 
       placeholder.innerHTML = "<span class='icon'>⏳</span><span>正在壓縮照片中...</span>";
       
       for (let i = 0; i < input.files.length; i++) {
-        if (selectedFiles.length + existingPhotoUrls.length >= 10) break;
         const compressedFile = await compressImage(input.files[i], 500);
         selectedFiles.push(compressedFile);
         
@@ -989,7 +983,7 @@
         img.style.cursor = 'pointer';
         
         img.dataset.type = 'new';
-        img.dataset.index = selectedFiles.length - 1; // It was just pushed
+        img.dataset.index = selectedFiles.length - 1;
         img.onclick = function() {
           if (confirm("確定要刪除這張照片嗎？")) {
             const index = selectedFiles.indexOf(compressedFile);
@@ -1074,11 +1068,11 @@
     function updatePlaceholder() {
       const placeholder = document.getElementById('upload-placeholder');
       const total = selectedFiles.length + existingPhotoUrls.length;
-      if (total >= 10) {
-        placeholder.style.display = 'none';
+      placeholder.style.display = 'flex';
+      if (total > 0) {
+        placeholder.innerHTML = `<span class="icon">📸</span><span>點此繼續上傳照片 (目前已選 ${total} 張照片，無數量限制)</span>`;
       } else {
-        placeholder.style.display = 'flex';
-        placeholder.innerHTML = `<span class="icon">📸</span><span>點此上傳新照片 (目前共 ${total}/10 張)</span>`;
+        placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (無張數限制)</span>`;
       }
     }
 
@@ -1125,7 +1119,7 @@
       
       const placeholder = document.getElementById('upload-placeholder');
       placeholder.style.display = 'flex';
-      placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (最多10張)</span>`;
+      placeholder.innerHTML = `<span class="icon">📸</span><span>點此拍現場照片或從相簿選擇 (無張數限制)</span>`;
       
       if (tempMarker) {
         map.removeLayer(tempMarker);
@@ -1277,25 +1271,39 @@
         }
 
         const photosEscaped = JSON.stringify(photos).replace(/"/g, '&quot;');
-        let photoHTML = photos.length > 0 ? `<img src="${photos[0]}" class="card-photo-thumb" alt="${loc.name}" style="align-self: flex-start; cursor:pointer;" onclick="event.stopPropagation(); openFullscreenPhoto(${photosEscaped}, 0)">` : '';
 
         let statusBadge = swept 
           ? `<span class="card-badge" style="background-color:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7;">✅ ${currentSelectedYear} 已掃 (${sweptInfo.sweptBy || '已完成'})</span>`
           : `<span class="card-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffe0b2;">⭕ ${currentSelectedYear} 尚未掃</span>`;
+
+        let photoBadge = photos.length > 0
+          ? `<span class="card-badge" style="background-color:#e3f2fd; color:#1565c0; border:1px solid #bbdefb;">📸 ${photos.length} 張照片</span>`
+          : '';
+
+        let photoGalleryHTML = '';
+        if (photos.length > 0) {
+          photoGalleryHTML += `<div style="display:flex; gap:6px; overflow-x:auto; margin-top:8px; padding-bottom:4px;" onclick="event.stopPropagation();">`;
+          photos.forEach((url, i) => {
+            photoGalleryHTML += `<img src="${url}" style="width:65px; height:65px; object-fit:cover; border-radius:6px; cursor:pointer; flex-shrink:0; border:1px solid rgba(0,0,0,0.1);" title="點擊放大查看照片 ${i+1}" onclick="openFullscreenPhoto(${photosEscaped}, ${i})">`;
+          });
+          photoGalleryHTML += `</div>`;
+        }
 
         let toggleBtnHTML = swept
           ? `<button onclick="event.stopPropagation(); toggleSweptStatus('${loc.id}')" style="padding:4px 10px; background-color:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">✅ 已掃 (點擊取消)</button>`
           : `<button onclick="event.stopPropagation(); toggleSweptStatus('${loc.id}')" style="padding:4px 10px; background-color:#2e7d32; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem; font-weight:bold;">🧹 標記 ${currentSelectedYear} 已掃墓</button>`;
 
         card.innerHTML = `
-          <div class="card-info" onclick="focusLocation('${loc.id}')" style="cursor:pointer;">
+          <div class="card-info" onclick="focusLocation('${loc.id}')" style="cursor:pointer; width:100%;">
             <div class="card-title">${loc.name}</div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:2px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">
               ${loc.ancestor ? `<span class="card-badge">祖先: ${loc.ancestor}</span>` : ''}
               ${statusBadge}
+              ${photoBadge}
             </div>
-            <div class="card-description" style="font-size:0.85rem; color:#53685e; margin-top:4px;">${loc.description || '無描述。'}</div>
-            <div class="card-meta">
+            <div class="card-description" style="font-size:0.85rem; color:#53685e; margin-top:6px;">${loc.description || '無描述。'}</div>
+            ${photoGalleryHTML}
+            <div class="card-meta" style="margin-top:6px;">
               <span>👤 記錄人: ${loc.recorder}</span>
             </div>
             <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
@@ -1303,7 +1311,6 @@
               <button onclick="event.stopPropagation(); editLocation('${loc.id}')" style="padding:4px 10px; background-color:var(--secondary-color); color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.75rem;">✏️ 編輯</button>
             </div>
           </div>
-          ${photoHTML}
         `;
         listContainer.appendChild(card);
       });
@@ -1449,6 +1456,11 @@
       
       if (photoList.length === 0) return;
 
+      let zoomLevel = 1;
+      let panX = 0, panY = 0;
+      let isDragging = false;
+      let dragStartX = 0, dragStartY = 0;
+
       const overlay = document.createElement('div');
       overlay.style.position = 'fixed';
       overlay.style.top = '0';
@@ -1460,13 +1472,50 @@
       overlay.style.display = 'flex';
       overlay.style.flexDirection = 'column';
       overlay.style.alignItems = 'center';
-      overlay.style.justifyContent = 'center';
+      overlay.style.justifyContent = 'space-between';
       overlay.style.userSelect = 'none';
 
+      // 頂部資訊列 (計數器與關閉按鈕)
+      const topBar = document.createElement('div');
+      topBar.style.width = '100%';
+      topBar.style.padding = '16px 20px';
+      topBar.style.display = 'flex';
+      topBar.style.justifyContent = 'space-between';
+      topBar.style.alignItems = 'center';
+      topBar.style.zIndex = '10002';
+      topBar.style.boxSizing = 'border-box';
+      topBar.style.background = 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)';
+
+      const counter = document.createElement('div');
+      counter.style.color = '#fff';
+      counter.style.fontSize = '16px';
+      counter.style.fontWeight = 'bold';
+      counter.style.display = 'flex';
+      counter.style.alignItems = 'center';
+      counter.style.gap = '8px';
+
+      const closeBtn = document.createElement('div');
+      closeBtn.innerHTML = '✕';
+      closeBtn.style.color = '#fff';
+      closeBtn.style.fontSize = '24px';
+      closeBtn.style.fontWeight = 'bold';
+      closeBtn.style.cursor = 'pointer';
+      closeBtn.style.width = '40px';
+      closeBtn.style.height = '40px';
+      closeBtn.style.display = 'flex';
+      closeBtn.style.alignItems = 'center';
+      closeBtn.style.justifyContent = 'center';
+      closeBtn.style.borderRadius = '50%';
+      closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+      topBar.appendChild(counter);
+      topBar.appendChild(closeBtn);
+      overlay.appendChild(topBar);
+
+      // 主容器
       const container = document.createElement('div');
       container.style.position = 'relative';
       container.style.width = '100%';
-      container.style.height = '80%';
+      container.style.flex = '1';
       container.style.display = 'flex';
       container.style.alignItems = 'center';
       container.style.justifyContent = 'center';
@@ -1474,106 +1523,185 @@
       overlay.appendChild(container);
 
       const img = document.createElement('img');
-      img.style.maxWidth = '95%';
-      img.style.maxHeight = '95%';
+      img.style.maxWidth = '90%';
+      img.style.maxHeight = '90%';
       img.style.objectFit = 'contain';
       img.style.borderRadius = '8px';
-      img.style.border = '2px solid rgba(255, 255, 255, 0.8)';
-      img.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
       img.style.boxShadow = '0 10px 25px rgba(0,0,0,0.5)';
+      img.style.transition = 'transform 0.15s ease-out, opacity 0.2s ease';
+      img.style.transformOrigin = 'center center';
+      img.style.cursor = 'zoom-in';
       container.appendChild(img);
 
-      const closeBtn = document.createElement('div');
-      closeBtn.innerHTML = '✕';
-      closeBtn.style.position = 'absolute';
-      closeBtn.style.top = '20px';
-      closeBtn.style.right = '20px';
-      closeBtn.style.color = '#fff';
-      closeBtn.style.fontSize = '30px';
-      closeBtn.style.fontWeight = 'bold';
-      closeBtn.style.cursor = 'pointer';
-      closeBtn.style.zIndex = '10001';
-      closeBtn.style.width = '44px';
-      closeBtn.style.height = '44px';
-      closeBtn.style.display = 'flex';
-      closeBtn.style.alignItems = 'center';
-      closeBtn.style.justifyContent = 'center';
-      closeBtn.style.borderRadius = '50%';
-      closeBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
-      overlay.appendChild(closeBtn);
+      // 底部工具列 (放大/縮小/重置/切換指示)
+      const bottomBar = document.createElement('div');
+      bottomBar.style.width = '100%';
+      bottomBar.style.padding = '12px 20px 24px';
+      bottomBar.style.display = 'flex';
+      bottomBar.style.flexDirection = 'column';
+      bottomBar.style.alignItems = 'center';
+      bottomBar.style.gap = '10px';
+      bottomBar.style.zIndex = '10002';
+      bottomBar.style.boxSizing = 'border-box';
+      bottomBar.style.background = 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)';
 
+      const controlsGroup = document.createElement('div');
+      controlsGroup.style.display = 'flex';
+      controlsGroup.style.alignItems = 'center';
+      controlsGroup.style.gap = '12px';
+
+      const zoomOutBtn = document.createElement('button');
+      zoomOutBtn.innerText = '🔍- 縮小';
+      zoomOutBtn.style.padding = '6px 14px';
+      zoomOutBtn.style.borderRadius = '20px';
+      zoomOutBtn.style.border = 'none';
+      zoomOutBtn.style.backgroundColor = 'rgba(255,255,255,0.2)';
+      zoomOutBtn.style.color = '#fff';
+      zoomOutBtn.style.fontWeight = 'bold';
+      zoomOutBtn.style.cursor = 'pointer';
+      zoomOutBtn.onclick = (e) => { e.stopPropagation(); zoomOut(); };
+
+      const zoomResetBtn = document.createElement('button');
+      zoomResetBtn.innerText = '↺ 1:1';
+      zoomResetBtn.style.padding = '6px 14px';
+      zoomResetBtn.style.borderRadius = '20px';
+      zoomResetBtn.style.border = 'none';
+      zoomResetBtn.style.backgroundColor = 'rgba(255,255,255,0.2)';
+      zoomResetBtn.style.color = '#fff';
+      zoomResetBtn.style.fontWeight = 'bold';
+      zoomResetBtn.style.cursor = 'pointer';
+      zoomResetBtn.onclick = (e) => { e.stopPropagation(); resetZoom(); };
+
+      const zoomInBtn = document.createElement('button');
+      zoomInBtn.innerText = '🔍+ 放大';
+      zoomInBtn.style.padding = '6px 14px';
+      zoomInBtn.style.borderRadius = '20px';
+      zoomInBtn.style.border = 'none';
+      zoomInBtn.style.backgroundColor = 'var(--accent-color)';
+      zoomInBtn.style.color = '#fff';
+      zoomInBtn.style.fontWeight = 'bold';
+      zoomInBtn.style.cursor = 'pointer';
+      zoomInBtn.onclick = (e) => { e.stopPropagation(); zoomIn(); };
+
+      const zoomInfo = document.createElement('span');
+      zoomInfo.style.color = 'rgba(255,255,255,0.8)';
+      zoomInfo.style.fontSize = '0.85rem';
+      zoomInfo.innerText = '100%';
+
+      controlsGroup.appendChild(zoomOutBtn);
+      controlsGroup.appendChild(zoomResetBtn);
+      controlsGroup.appendChild(zoomInBtn);
+      controlsGroup.appendChild(zoomInfo);
+
+      const hintText = document.createElement('div');
+      hintText.style.color = 'rgba(255,255,255,0.6)';
+      hintText.style.fontSize = '0.75rem';
+      hintText.innerText = '💡 提示：雙擊照片或使用滾輪可放大縮小，放大後可拖曳細看';
+
+      bottomBar.appendChild(controlsGroup);
+      bottomBar.appendChild(hintText);
+
+      // 圓點指示器
+      const dotsContainer = document.createElement('div');
+      dotsContainer.style.display = 'flex';
+      dotsContainer.style.gap = '8px';
+      dotsContainer.style.marginTop = '4px';
+      bottomBar.appendChild(dotsContainer);
+
+      overlay.appendChild(bottomBar);
+
+      // 左右切換按鈕
       let prevBtn, nextBtn;
       if (photoList.length > 1) {
         prevBtn = document.createElement('div');
         prevBtn.innerHTML = '&#10094;';
         prevBtn.style.position = 'absolute';
-        prevBtn.style.left = '20px';
+        prevBtn.style.left = '16px';
+        prevBtn.style.top = '50%';
+        prevBtn.style.transform = 'translateY(-50%)';
         prevBtn.style.color = '#fff';
-        prevBtn.style.fontSize = '36px';
+        prevBtn.style.fontSize = '30px';
         prevBtn.style.cursor = 'pointer';
         prevBtn.style.zIndex = '10001';
-        prevBtn.style.width = '50px';
-        prevBtn.style.height = '50px';
+        prevBtn.style.width = '44px';
+        prevBtn.style.height = '44px';
         prevBtn.style.display = 'flex';
         prevBtn.style.alignItems = 'center';
         prevBtn.style.justifyContent = 'center';
         prevBtn.style.borderRadius = '50%';
         prevBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
-        prevBtn.style.transition = 'background-color 0.2s';
-        prevBtn.onmouseenter = () => prevBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        prevBtn.onmouseleave = () => prevBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
         overlay.appendChild(prevBtn);
 
         nextBtn = document.createElement('div');
         nextBtn.innerHTML = '&#10095;';
         nextBtn.style.position = 'absolute';
-        nextBtn.style.right = '20px';
+        nextBtn.style.right = '16px';
+        nextBtn.style.top = '50%';
+        nextBtn.style.transform = 'translateY(-50%)';
         nextBtn.style.color = '#fff';
-        nextBtn.style.fontSize = '36px';
+        nextBtn.style.fontSize = '30px';
         nextBtn.style.cursor = 'pointer';
         nextBtn.style.zIndex = '10001';
-        nextBtn.style.width = '50px';
-        nextBtn.style.height = '50px';
+        nextBtn.style.width = '44px';
+        nextBtn.style.height = '44px';
         nextBtn.style.display = 'flex';
         nextBtn.style.alignItems = 'center';
         nextBtn.style.justifyContent = 'center';
         nextBtn.style.borderRadius = '50%';
         nextBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
-        nextBtn.style.transition = 'background-color 0.2s';
-        nextBtn.onmouseenter = () => nextBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        nextBtn.onmouseleave = () => nextBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
         overlay.appendChild(nextBtn);
       }
-
-      const dotsContainer = document.createElement('div');
-      dotsContainer.style.display = 'flex';
-      dotsContainer.style.gap = '8px';
-      dotsContainer.style.position = 'absolute';
-      dotsContainer.style.bottom = '30px';
-      dotsContainer.style.zIndex = '10001';
-      overlay.appendChild(dotsContainer);
 
       const dots = [];
       if (photoList.length > 1) {
         for (let i = 0; i < photoList.length; i++) {
           const dot = document.createElement('div');
-          dot.style.width = '10px';
-          dot.style.height = '10px';
+          dot.style.width = '8px';
+          dot.style.height = '8px';
           dot.style.borderRadius = '50%';
           dot.style.backgroundColor = i === currentIndex ? '#fff' : 'rgba(255,255,255,0.4)';
           dot.style.cursor = 'pointer';
-          dot.onclick = (e) => {
-            e.stopPropagation();
-            showPhoto(i);
-          };
+          dot.onclick = (e) => { e.stopPropagation(); showPhoto(i); };
           dotsContainer.appendChild(dot);
           dots.push(dot);
         }
       }
 
+      function updateImageTransform() {
+        if (zoomLevel <= 1) {
+          zoomLevel = 1;
+          panX = 0;
+          panY = 0;
+          img.style.cursor = 'zoom-in';
+        } else {
+          img.style.cursor = 'grab';
+        }
+        img.style.transform = `scale(${zoomLevel}) translate(${panX / zoomLevel}px, ${panY / zoomLevel}px)`;
+        zoomInfo.innerText = `${Math.round(zoomLevel * 100)}%`;
+      }
+
+      function zoomIn() {
+        zoomLevel = Math.min(5, zoomLevel + 0.5);
+        updateImageTransform();
+      }
+
+      function zoomOut() {
+        zoomLevel = Math.max(1, zoomLevel - 0.5);
+        updateImageTransform();
+      }
+
+      function resetZoom() {
+        zoomLevel = 1;
+        panX = 0;
+        panY = 0;
+        updateImageTransform();
+      }
+
       function showPhoto(index) {
         if (index < 0 || index >= photoList.length) return;
         currentIndex = index;
+        resetZoom();
+        counter.innerText = `📸 照片 ${currentIndex + 1} / ${photoList.length}`;
         img.style.opacity = '0';
         setTimeout(() => {
           img.src = photoList[currentIndex];
@@ -1585,43 +1713,91 @@
         });
       }
 
-      img.src = photoList[currentIndex];
+      showPhoto(currentIndex);
 
       function nextPhoto() {
-        if (currentIndex < photoList.length - 1) {
-          showPhoto(currentIndex + 1);
-        } else {
-          showPhoto(0);
-        }
+        showPhoto(currentIndex < photoList.length - 1 ? currentIndex + 1 : 0);
       }
 
       function prevPhoto() {
-        if (currentIndex > 0) {
-          showPhoto(currentIndex - 1);
-        } else {
-          showPhoto(photoList.length - 1);
-        }
+        showPhoto(currentIndex > 0 ? currentIndex - 1 : photoList.length - 1);
       }
 
       if (prevBtn) prevBtn.onclick = (e) => { e.stopPropagation(); prevPhoto(); };
       if (nextBtn) nextBtn.onclick = (e) => { e.stopPropagation(); nextPhoto(); };
 
-      let startX = 0;
-      let endX = 0;
+      // 雙擊放大/還原
+      img.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        if (zoomLevel === 1) {
+          zoomLevel = 2.5;
+        } else {
+          resetZoom();
+        }
+        updateImageTransform();
+      });
+
+      // 滾輪縮放
+      container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          zoomLevel = Math.min(5, zoomLevel + 0.25);
+        } else {
+          zoomLevel = Math.max(1, zoomLevel - 0.25);
+        }
+        updateImageTransform();
+      }, { passive: false });
+
+      // 滑鼠拖曳 (放大時平移照片)
+      container.addEventListener('mousedown', (e) => {
+        if (zoomLevel > 1) {
+          isDragging = true;
+          dragStartX = e.clientX - panX;
+          dragStartY = e.clientY - panY;
+          img.style.cursor = 'grabbing';
+        }
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (isDragging && zoomLevel > 1) {
+          panX = e.clientX - dragStartX;
+          panY = e.clientY - dragStartY;
+          updateImageTransform();
+        }
+      });
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+        if (zoomLevel > 1) img.style.cursor = 'grab';
+      });
+
+      // 觸控滑動 (未放大時切換照片 / 放大時拖曳平移)
+      let touchStartX = 0, touchStartY = 0;
       container.addEventListener('touchstart', (e) => {
-        startX = e.touches[0].clientX;
+        if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          if (zoomLevel > 1) {
+            isDragging = true;
+            dragStartX = e.touches[0].clientX - panX;
+            dragStartY = e.touches[0].clientY - panY;
+          }
+        }
       }, { passive: true });
 
       container.addEventListener('touchmove', (e) => {
-        endX = e.touches[0].clientX;
+        if (isDragging && zoomLevel > 1 && e.touches.length === 1) {
+          panX = e.touches[0].clientX - dragStartX;
+          panY = e.touches[0].clientY - dragStartY;
+          updateImageTransform();
+        }
       }, { passive: true });
 
-      container.addEventListener('touchend', () => {
-        const threshold = 50;
-        if (startX - endX > threshold) {
-          nextPhoto();
-        } else if (endX - startX > threshold) {
-          prevPhoto();
+      container.addEventListener('touchend', (e) => {
+        isDragging = false;
+        if (zoomLevel === 1 && e.changedTouches.length === 1) {
+          const touchEndX = e.changedTouches[0].clientX;
+          const diffX = touchStartX - touchEndX;
+          if (diffX > 50) nextPhoto();
+          else if (diffX < -50) prevPhoto();
         }
       });
 
