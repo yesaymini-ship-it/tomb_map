@@ -445,13 +445,10 @@
 
   <header>
     <h1><span class="logo-emoji">🌿</span>清明尋陵 <span style="font-weight:300; font-size:1rem;">| 掃墓地圖協作系統 (雲端版)</span></h1>
-    <div style="display:flex; align-items:center; gap:10px;">
-      <button id="map-toggle-btn" onclick="toggleMapManual()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:1px solid rgba(255,255,255,0.4); border-radius:6px; cursor:pointer; background:rgba(255,255,255,0.2); color:white;">🗺️ 隱藏地圖</button>
-      <button onclick="exportData()" style="padding:6px 12px; font-size:0.85rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:var(--accent-color); color:white;">📥 備份資料</button>
-      <div class="subtitle" style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
-        <div>永久免費雲端版</div>
-        <div style="font-size:0.75rem; opacity:0.85; color:var(--accent-color);">v1.4.0 (2026-08-23)</div>
-      </div>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <button id="map-toggle-btn" onclick="toggleMapManual()" style="padding:6px 10px; font-size:0.82rem; font-weight:bold; border:1px solid rgba(255,255,255,0.4); border-radius:6px; cursor:pointer; background:rgba(255,255,255,0.2); color:white;">🗺️ 隱藏地圖</button>
+      <button onclick="exportData()" style="padding:6px 10px; font-size:0.82rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:var(--accent-color); color:white;" title="下載文字與座標資料檔">📥 JSON備份</button>
+      <button onclick="exportPhotosZip()" style="padding:6px 10px; font-size:0.82rem; font-weight:bold; border:none; border-radius:6px; cursor:pointer; background:#2e7d32; color:white;" title="分類打包下載所有實拍照片">📦 照片打包(ZIP)</button>
     </div>
   </header>
 
@@ -580,6 +577,8 @@
     </div>
   </div>
 
+  <!-- JSZip (用於打包照片 ZIP) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <!-- SortableJS -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <!-- Leaflet Map JS -->
@@ -749,6 +748,114 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    }
+
+    async function exportPhotosZip() {
+      if (!allLocations || allLocations.length === 0) {
+        alert("目前沒有任何資料可以備份喔！");
+        return;
+      }
+      if (typeof JSZip === 'undefined') {
+        alert("照片打包工具 (JSZip) 載入中，請稍後再試！");
+        return;
+      }
+
+      let photoTasks = [];
+      allLocations.forEach(loc => {
+        let photos = [];
+        if (loc.photo_url) {
+          if (loc.photo_url.startsWith('[')) {
+            try { photos = JSON.parse(loc.photo_url); } catch(e) { photos = [loc.photo_url]; }
+          } else {
+            photos = [loc.photo_url];
+          }
+        }
+        photos.forEach((url, idx) => {
+          photoTasks.push({
+            locId: loc.id,
+            locName: loc.name || '未命名墓地',
+            ancestor: loc.ancestor || '',
+            url: url,
+            index: idx + 1
+          });
+        });
+      });
+
+      if (photoTasks.length === 0) {
+        alert("目前所有墓地記錄中都沒有上傳照片喔！");
+        return;
+      }
+
+      const zip = new JSZip();
+      const manifest = [];
+      let loadedCount = 0;
+
+      const statusModal = document.createElement('div');
+      statusModal.style.position = 'fixed';
+      statusModal.style.top = '0'; statusModal.style.left = '0';
+      statusModal.style.width = '100vw'; statusModal.style.height = '100dvh';
+      statusModal.style.backgroundColor = 'rgba(0,0,0,0.75)';
+      statusModal.style.zIndex = '99999';
+      statusModal.style.display = 'flex';
+      statusModal.style.alignItems = 'center';
+      statusModal.style.justifyContent = 'center';
+      statusModal.innerHTML = `
+        <div style="background:white; padding:24px 30px; border-radius:14px; text-align:center; max-width:320px; box-shadow:0 10px 25px rgba(0,0,0,0.3);">
+          <div style="font-size:2.4rem; margin-bottom:8px;">📦</div>
+          <div style="font-weight:bold; font-size:1.1rem; color:var(--primary-color); margin-bottom:6px;">正在下載與分類照片...</div>
+          <div id="zip-progress-text" style="font-size:0.9rem; font-weight:bold; color:var(--secondary-color);">進度: 0 / ${photoTasks.length} 張</div>
+          <div style="margin-top:10px; font-size:0.78rem; color:#888; line-height:1.4;">照片會依「墓地名稱」自動建資料夾分類<br>並附帶還原對照檔</div>
+        </div>
+      `;
+      document.body.appendChild(statusModal);
+
+      try {
+        for (let task of photoTasks) {
+          const safeFolderName = task.locName.replace(/[\\/:*?"<>|]/g, '_').trim() || '墓地照片';
+          const photoFileName = `${safeFolderName}/photo_${task.index}.jpg`;
+
+          try {
+            const res = await fetch(task.url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            zip.file(photoFileName, blob);
+            manifest.push({
+              locId: task.locId,
+              locName: task.locName,
+              ancestor: task.ancestor,
+              zipPath: photoFileName,
+              originalUrl: task.url
+            });
+          } catch (e) {
+            console.error(`下載照片失敗 (${task.url}):`, e);
+          }
+
+          loadedCount++;
+          const elem = document.getElementById('zip-progress-text');
+          if (elem) elem.innerText = `進度: ${loadedCount} / ${photoTasks.length} 張`;
+        }
+
+        zip.file("manifest.json", JSON.stringify({
+          exportedAt: new Date().toISOString(),
+          locations: allLocations,
+          photoMap: manifest
+        }, null, 2));
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tomb_map_photos_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+      } catch (err) {
+        alert("打包失敗：" + err.message);
+      } finally {
+        if (statusModal.parentNode) document.body.removeChild(statusModal);
+      }
     }
 
     // Firebase 模組取用輔助
